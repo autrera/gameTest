@@ -22,7 +22,7 @@ function love.load()
     enemies = {}
     enemySize = 32
     enemySpeed = 48
-    maxEnemies = 5
+    maxEnemies = 10
 
     bullets = {}
     bulletSpeed = 400
@@ -36,7 +36,7 @@ function love.load()
     joystick = nil
     deadzone = 0.2
 
-    spawnEnemies()
+    resetGame()
 end
 
 function love.joystickadded(j)
@@ -278,6 +278,8 @@ function love.draw()
         love.graphics.line(0, screenY, window_width, screenY)
     end
 
+    local legendFont = love.graphics.newFont(24)
+    love.graphics.setFont(legendFont)
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("HP: " .. player.hp, 10, 10)
 
