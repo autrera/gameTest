@@ -281,6 +281,8 @@ function love.draw()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("HP: " .. player.hp, 10, 10)
 
+    love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 30)
+
     love.graphics.setColor(1, 1, 1)
     love.graphics.rectangle("fill", (window_width / 2) - player.size / 2, (window_height / 2) - player.size / 2,
         player.size, player
