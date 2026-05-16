@@ -317,7 +317,7 @@ function love.draw()
 
         local legendFont = love.graphics.newFont(24)
         love.graphics.setFont(legendFont)
-        local legendText = "Press any key to restart (Escape to quit)"
+        local legendText = "Press ENTER to restart or A in the controller (Escape to quit)"
         local legendWidth = legendFont:getWidth(legendText)
         love.graphics.print(legendText, (window_width / 2) - legendWidth / 2, 330)
     end
@@ -328,7 +328,7 @@ function love.keypressed(key)
         love.event.quit()
     elseif key == "r" then
         resetGame()
-    elseif gameOver then
+    elseif gameOver and key == "return" then
         resetGame()
     end
 end
