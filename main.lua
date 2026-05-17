@@ -11,7 +11,8 @@ function love.load()
         speed = 32,
         hp = 100,
         damageCooldown = 0,
-        damageInterval = 1
+        damageInterval = 1,
+        experience = 0
     }
 
     camera = {
@@ -25,11 +26,11 @@ function love.load()
     maxEnemies = 10
 
     bullets = {}
-    bulletSpeed = 400
+    bulletSpeed = 600
     bulletSize = 4
     bulletFireRate = 1 / 3
     bulletCooldown = 0
-    detectionRange = 200
+    detectionRange = 300
 
     gameOver = false
 
@@ -247,6 +248,7 @@ function love.update(dt)
                 hit = true
                 if enemy.hp <= 0 then
                     table.remove(enemies, j)
+                    player.experience = player.experience + 10
                 end
                 break
             end
@@ -255,6 +257,11 @@ function love.update(dt)
         if hit then
             table.remove(bullets, i)
         end
+    end
+
+    if player.experience >= 100 then
+        player.experience = 0
+        bulletSpeed = bulletSpeed + 100
     end
 
     spawnEnemies()
@@ -283,7 +290,9 @@ function love.draw()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("HP: " .. player.hp, 10, 10)
 
-    love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 30)
+    love.graphics.print("Experience: " .. tostring(player.experience), 10, 30)
+    love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 50)
+    love.graphics.print("Bullet Speed: " .. tostring(bulletSpeed), 10, 70)
 
     love.graphics.setColor(1, 1, 1)
     love.graphics.rectangle("fill", (window_width / 2) - player.size / 2, (window_height / 2) - player.size / 2,
