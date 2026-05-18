@@ -461,7 +461,7 @@ function love.update(dt)
 		for _, enemy in ipairs(nearby) do
 			if not b.hitEnemies[enemy] then
 				if distSq(b.x, b.y, enemy.x, enemy.y) < boomerangHitRadiusSq then
-					enemy.hp = enemy.hp - 3
+					enemy.hp = enemy.hp - 1
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
 						enemy.dead = true
