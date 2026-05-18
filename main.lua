@@ -34,6 +34,12 @@ function love.load()
 	bulletCooldown = 0
 	detectionRange = 300
 
+	boomerangs = {}
+	boomerangCooldown = 0
+	boomerangSize = 8
+	boomerangRotationSpeed = 5
+	boomerangExpandSpeed = 200
+
 	gameOver = false
 
 	joystick = nil
@@ -103,6 +109,8 @@ function resetGame()
 	enemies = {}
 	bullets = {}
 	bulletCooldown = 0
+	boomerangs = {}
+	boomerangCooldown = 0
 
 	levelUpActive = false
 	levelUpChoices = {}
@@ -328,6 +336,53 @@ function love.update(dt)
 		end
 	end
 
+	if player.level >= 5 and #boomerangs == 0 then
+		boomerangCooldown = boomerangCooldown - dt
+		if boomerangCooldown <= 0 then
+			table.insert(boomerangs, {
+				x = player.x,
+				y = player.y,
+				originX = player.x,
+				originY = player.y,
+				angle = 0,
+				radius = 0,
+				hitEnemies = {},
+			})
+			boomerangCooldown = math.max(1, 6 - math.floor(player.level / 5))
+		end
+	end
+
+	for i = #boomerangs, 1, -1 do
+		local b = boomerangs[i]
+		b.angle = b.angle + boomerangRotationSpeed * dt
+		b.radius = b.radius + boomerangExpandSpeed * dt
+		b.x = b.originX + math.cos(b.angle) * b.radius
+		b.y = b.originY + math.sin(b.angle) * b.radius
+
+		for j = #enemies, 1, -1 do
+			local enemy = enemies[j]
+			if not b.hitEnemies[enemy] then
+				local dx = b.x - enemy.x
+				local dy = b.y - enemy.y
+				local dist = math.sqrt(dx * dx + dy * dy)
+				if dist < boomerangSize + enemy.size / 2 then
+					enemy.hp = enemy.hp - 1
+					b.hitEnemies[enemy] = true
+					if enemy.hp <= 0 then
+						table.remove(enemies, j)
+						player.experience = player.experience + 10
+					end
+				end
+			end
+		end
+
+		local screenX = b.x - camera.x
+		local screenY = b.y - camera.y
+		if screenX < -50 or screenX > window_width + 50 or screenY < -50 or screenY > window_height + 50 then
+			table.remove(boomerangs, i)
+		end
+	end
+
 	local xpNeeded = 100 + (player.level - 1) * 50
 	if player.experience >= xpNeeded then
 		player.experience = player.experience - xpNeeded
@@ -379,6 +434,12 @@ function love.draw()
 	love.graphics.print(moveSpeedText, statsX - statsFont:getWidth(moveSpeedText), 30)
 	love.graphics.print(detectRangeText, statsX - statsFont:getWidth(detectRangeText), 50)
 
+	if player.level >= 5 then
+		local boomerangCd = math.max(1, 6 - math.floor(player.level / 5))
+		local boomerangText = "Boomerang: " .. string.format("%.1f", boomerangCooldown) .. "/" .. boomerangCd .. "s"
+		love.graphics.print(boomerangText, statsX - statsFont:getWidth(boomerangText), 70)
+	end
+
 	love.graphics.setColor(1, 1, 1)
 	love.graphics.rectangle(
 		"fill",
@@ -400,6 +461,13 @@ function love.draw()
 		local screenX = bullet.x - camera.x
 		local screenY = bullet.y - camera.y
 		love.graphics.circle("fill", screenX, screenY, bulletSize)
+	end
+
+	love.graphics.setColor(0, 1, 1)
+	for _, b in ipairs(boomerangs) do
+		local screenX = b.x - camera.x
+		local screenY = b.y - camera.y
+		love.graphics.circle("fill", screenX, screenY, boomerangSize)
 	end
 
 	if gameOver then
