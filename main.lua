@@ -311,8 +311,9 @@ function love.update(dt)
         end
     end
 
-    if player.experience >= 100 then
-        player.experience = player.experience - 100
+    local xpNeeded = 100 + (player.level - 1) * 50
+    if player.experience >= xpNeeded then
+        player.experience = player.experience - xpNeeded
         player.level = player.level + 1
         generateLevelUpChoices()
         selectedChoice = 1
@@ -346,7 +347,8 @@ function love.draw()
     love.graphics.print("HP: " .. player.hp, 10, 10)
 
     love.graphics.print("Level: " .. player.level, 10, 30)
-    love.graphics.print("XP: " .. player.experience .. "/100", 10, 50)
+    local xpNeeded = 100 + (player.level - 1) * 50
+    love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
     love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
 
     local statsFont = love.graphics.newFont(24)
