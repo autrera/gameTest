@@ -12,7 +12,8 @@ function love.load()
         hp = 100,
         damageCooldown = 0,
         damageInterval = 1,
-        experience = 0
+        experience = 0,
+        level = 1
     }
 
     camera = {
@@ -37,6 +38,28 @@ function love.load()
     joystick = nil
     deadzone = 0.2
 
+    levelUpActive = false
+    levelUpChoices = {}
+    selectedChoice = 1
+
+    upgradePool = {
+        {
+            name = "Bullet Speed",
+            description = "+100 bullet speed",
+            apply = function() bulletSpeed = bulletSpeed + 100 end
+        },
+        {
+            name = "Move Speed",
+            description = "+16 move speed",
+            apply = function() player.speed = player.speed + 16 end
+        },
+        {
+            name = "Detection Range",
+            description = "+100 gun range",
+            apply = function() detectionRange = detectionRange + 100 end
+        }
+    }
+
     resetGame()
 end
 
@@ -57,6 +80,12 @@ function resetGame()
     player.y = 0
     player.hp = 100
     player.damageCooldown = 0
+    player.speed = 32
+    player.experience = 0
+    player.level = 1
+
+    bulletSpeed = 600
+    detectionRange = 300
 
     camera.x = player.x - (window_width / 2)
     camera.y = player.y - (window_height / 2)
@@ -65,9 +94,28 @@ function resetGame()
     bullets = {}
     bulletCooldown = 0
 
+    levelUpActive = false
+    levelUpChoices = {}
+    selectedChoice = 1
+
     spawnEnemies()
 
     gameOver = false
+end
+
+function generateLevelUpChoices()
+    levelUpChoices = {}
+    local available = {}
+    for i, v in ipairs(upgradePool) do
+        available[i] = v
+    end
+
+    for i = 1, 3 do
+        if #available == 0 then break end
+        local idx = math.random(1, #available)
+        table.insert(levelUpChoices, available[idx])
+        table.remove(available, idx)
+    end
 end
 
 function spawnEnemies()
@@ -112,7 +160,7 @@ function findClosestEnemy()
 end
 
 function love.update(dt)
-    if gameOver then
+    if gameOver or levelUpActive then
         return
     end
 
@@ -260,8 +308,11 @@ function love.update(dt)
     end
 
     if player.experience >= 100 then
-        player.experience = 0
-        bulletSpeed = bulletSpeed + 100
+        player.experience = player.experience - 100
+        player.level = player.level + 1
+        generateLevelUpChoices()
+        selectedChoice = 1
+        levelUpActive = true
     end
 
     spawnEnemies()
@@ -290,9 +341,9 @@ function love.draw()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("HP: " .. player.hp, 10, 10)
 
-    love.graphics.print("Experience: " .. tostring(player.experience), 10, 30)
-    love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 50)
-    love.graphics.print("Bullet Speed: " .. tostring(bulletSpeed), 10, 70)
+    love.graphics.print("Level: " .. player.level, 10, 30)
+    love.graphics.print("XP: " .. player.experience .. "/100", 10, 50)
+    love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
 
     love.graphics.setColor(1, 1, 1)
     love.graphics.rectangle("fill", (window_width / 2) - player.size / 2, (window_height / 2) - player.size / 2,
@@ -330,6 +381,61 @@ function love.draw()
         local legendWidth = legendFont:getWidth(legendText)
         love.graphics.print(legendText, (window_width / 2) - legendWidth / 2, 330)
     end
+
+    if levelUpActive then
+        love.graphics.setColor(0, 0, 0, 0.7)
+        love.graphics.rectangle("fill", 0, 0, window_width, window_height)
+
+        love.graphics.setColor(1, 1, 1)
+        local titleFont = love.graphics.newFont(48)
+        love.graphics.setFont(titleFont)
+        local titleText = "Level Up!"
+        local titleWidth = titleFont:getWidth(titleText)
+        love.graphics.print(titleText, (window_width / 2) - titleWidth / 2, 100)
+
+        local itemFont = love.graphics.newFont(28)
+        love.graphics.setFont(itemFont)
+        local boxWidth = 280
+        local boxHeight = 150
+        local boxGap = 40
+        local totalWidth = (boxWidth * 3) + (boxGap * 2)
+        local startX = (window_width - totalWidth) / 2
+        local boxY = 220
+
+        for i, choice in ipairs(levelUpChoices) do
+            local boxX = startX + (i - 1) * (boxWidth + boxGap)
+
+            if i == selectedChoice then
+                love.graphics.setColor(0.3, 0.3, 0.5)
+            else
+                love.graphics.setColor(0.2, 0.2, 0.2)
+            end
+            love.graphics.rectangle("fill", boxX, boxY, boxWidth, boxHeight)
+
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.rectangle("line", boxX, boxY, boxWidth, boxHeight)
+
+            local numberText = tostring(i)
+            local numWidth = itemFont:getWidth(numberText)
+            love.graphics.print(numberText, boxX + (boxWidth - numWidth) / 2, boxY + 10)
+
+            local nameText = choice.name
+            local nameWidth = itemFont:getWidth(nameText)
+            love.graphics.print(nameText, boxX + (boxWidth - nameWidth) / 2, boxY + 50)
+
+            local descFont = love.graphics.newFont(20)
+            local descWidth = descFont:getWidth(choice.description)
+            love.graphics.setFont(descFont)
+            love.graphics.setColor(0.8, 0.8, 0.8)
+            love.graphics.print(choice.description, boxX + (boxWidth - descWidth) / 2, boxY + 90)
+        end
+
+        love.graphics.setFont(itemFont)
+        love.graphics.setColor(1, 1, 1)
+        local hintText = "Press 1, 2, or 3 to choose"
+        local hintWidth = itemFont:getWidth(hintText)
+        love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, boxY + boxHeight + 30)
+    end
 end
 
 function love.keypressed(key)
@@ -339,11 +445,54 @@ function love.keypressed(key)
         resetGame()
     elseif gameOver and key == "return" then
         resetGame()
+    elseif levelUpActive then
+        if key == "1" or key == "kp1" then
+            selectUpgrade(1)
+        elseif key == "2" or key == "kp2" then
+            selectUpgrade(2)
+        elseif key == "3" or key == "kp3" then
+            selectUpgrade(3)
+        end
+    end
+end
+
+function love.mousepressed(x, y, button)
+    if levelUpActive then
+        local boxWidth = 280
+        local boxHeight = 150
+        local boxGap = 40
+        local totalWidth = (boxWidth * 3) + (boxGap * 2)
+        local startX = (window_width - totalWidth) / 2
+        local boxY = 220
+
+        for i = 1, 3 do
+            local boxX = startX + (i - 1) * (boxWidth + boxGap)
+            if x >= boxX and x <= boxX + boxWidth and y >= boxY and y <= boxY + boxHeight then
+                selectUpgrade(i)
+                break
+            end
+        end
     end
 end
 
 function love.gamepadpressed(j, button)
     if button == "a" and gameOver then
         resetGame()
+    elseif button == "a" and levelUpActive then
+        selectUpgrade(selectedChoice)
+    elseif levelUpActive then
+        if button == "dpleft" or button == "leftshoulder" then
+            selectedChoice = math.max(1, selectedChoice - 1)
+        elseif button == "dpright" or button == "rightshoulder" then
+            selectedChoice = math.min(3, selectedChoice + 1)
+        end
+    end
+end
+
+function selectUpgrade(index)
+    if index >= 1 and index <= #levelUpChoices then
+        levelUpChoices[index].apply()
+        levelUpActive = false
+        levelUpChoices = {}
     end
 end
