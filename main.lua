@@ -1,8 +1,71 @@
 local window_width = 1280
 local window_height = 720
 
+local function distSq(x1, y1, x2, y2)
+	local dx = x1 - x2
+	local dy = y1 - y2
+	return dx * dx + dy * dy
+end
+
+local function swapRemove(t, i)
+	local n = #t
+	t[i] = t[n]
+	t[n] = nil
+end
+
+local GRID_CELL = 128
+local grid = {}
+
+local function gridKey(cx, cy)
+	return cx + cy * 100000
+end
+
+local function buildGrid()
+	for k in pairs(grid) do
+		grid[k] = nil
+	end
+	for i, enemy in ipairs(enemies) do
+		local cx = math.floor(enemy.x / GRID_CELL)
+		local cy = math.floor(enemy.y / GRID_CELL)
+		local key = gridKey(cx, cy)
+		if not grid[key] then
+			grid[key] = {}
+		end
+		table.insert(grid[key], i)
+	end
+end
+
+local function getNearbyEnemies(x, y, radius)
+	local result = {}
+	local r2 = radius * radius
+	local minCx = math.floor((x - radius) / GRID_CELL)
+	local maxCx = math.floor((x + radius) / GRID_CELL)
+	local minCy = math.floor((y - radius) / GRID_CELL)
+	local maxCy = math.floor((y + radius) / GRID_CELL)
+	for cx = minCx, maxCx do
+		for cy = minCy, maxCy do
+			local key = gridKey(cx, cy)
+			local cell = grid[key]
+			if cell then
+				for _, idx in ipairs(cell) do
+					local e = enemies[idx]
+					if e and distSq(x, y, e.x, e.y) < r2 + (e.size * e.size) / 4 then
+						table.insert(result, e)
+					end
+				end
+			end
+		end
+	end
+	return result
+end
+
 function love.load()
 	love.window.setMode(window_width, window_height)
+
+	font20 = love.graphics.newFont(20)
+	font24 = love.graphics.newFont(24)
+	font28 = love.graphics.newFont(28)
+	font48 = love.graphics.newFont(48)
 
 	player = {
 		x = 0,
@@ -33,6 +96,7 @@ function love.load()
 	fireRateLevel = 3
 	bulletCooldown = 0
 	detectionRange = 300
+	detectionRangeSq = detectionRange * detectionRange
 
 	boomerangs = {}
 	boomerangCooldown = 0
@@ -72,9 +136,13 @@ function love.load()
 			description = "+100 gun range",
 			apply = function()
 				detectionRange = detectionRange + 100
+				detectionRangeSq = detectionRange * detectionRange
 			end,
 		},
 	}
+
+	bulletPool = {}
+	bulletPoolMax = 500
 
 	resetGame()
 end
@@ -102,6 +170,7 @@ function resetGame()
 
 	bulletSpeed = 600
 	detectionRange = 300
+	detectionRangeSq = detectionRange * detectionRange
 	fireRateLevel = 3
 	bulletFireRate = 1 / 3
 
@@ -119,6 +188,10 @@ function resetGame()
 	selectedChoice = 1
 
 	paused = false
+
+	for i = 1, #bulletPool do
+		bulletPool[i] = nil
+	end
 
 	spawnEnemies()
 
@@ -169,14 +242,12 @@ end
 
 function findClosestEnemy()
 	local closest = nil
-	local closestDist = detectionRange
+	local closestDistSq = detectionRangeSq
 
 	for _, enemy in ipairs(enemies) do
-		local dx = enemy.x - player.x
-		local dy = enemy.y - player.y
-		local dist = math.sqrt(dx * dx + dy * dy)
-		if dist < closestDist then
-			closestDist = dist
+		local d = distSq(enemy.x, enemy.y, player.x, player.y)
+		if d < closestDistSq then
+			closestDistSq = d
 			closest = enemy
 		end
 	end
@@ -250,10 +321,11 @@ function love.update(dt)
 	for _, enemy in ipairs(enemies) do
 		local dirX = player.x - enemy.x
 		local dirY = player.y - enemy.y
-		local len = math.sqrt(dirX * dirX + dirY * dirY)
-		if len > 0 then
-			dirX = dirX / len
-			dirY = dirY / len
+		local lenSq = dirX * dirX + dirY * dirY
+		if lenSq > 0 then
+			local invLen = 1 / math.sqrt(lenSq)
+			dirX = dirX * invLen
+			dirY = dirY * invLen
 		end
 		enemy.x = enemy.x + dirX * enemySpeed * dt
 		enemy.y = enemy.y + dirY * enemySpeed * dt
@@ -261,22 +333,14 @@ function love.update(dt)
 
 	player.damageCooldown = player.damageCooldown - dt
 
+	local halfPlayer = player.size / 2
 	for _, enemy in ipairs(enemies) do
-		local playerLeft = player.x - player.size / 2
-		local playerRight = player.x + player.size / 2
-		local playerTop = player.y - player.size / 2
-		local playerBottom = player.y + player.size / 2
-
-		local enemyLeft = enemy.x - enemy.size / 2
-		local enemyRight = enemy.x + enemy.size / 2
-		local enemyTop = enemy.y - enemy.size / 2
-		local enemyBottom = enemy.y + enemy.size / 2
-
+		local halfEnemy = enemy.size / 2
 		if
-			playerRight > enemyLeft
-			and playerLeft < enemyRight
-			and playerBottom > enemyTop
-			and playerTop < enemyBottom
+			player.x + halfPlayer > enemy.x - halfEnemy
+			and player.x - halfPlayer < enemy.x + halfEnemy
+			and player.y + halfPlayer > enemy.y - halfEnemy
+			and player.y - halfPlayer < enemy.y + halfEnemy
 		then
 			if player.damageCooldown <= 0 then
 				player.hp = player.hp - 10
@@ -291,17 +355,32 @@ function love.update(dt)
 
 	bulletCooldown = bulletCooldown - dt
 
-	local closest = findClosestEnemy()
-	if closest and bulletCooldown <= 0 then
-		local dirX = closest.x - player.x
-		local dirY = closest.y - player.y
-		local len = math.sqrt(dirX * dirX + dirY * dirY)
-		if len > 0 then
-			dirX = dirX / len
-			dirY = dirY / len
+	if bulletCooldown <= 0 then
+		local closest = findClosestEnemy()
+		if closest then
+			local dirX = closest.x - player.x
+			local dirY = closest.y - player.y
+			local lenSq = dirX * dirX + dirY * dirY
+			if lenSq > 0 then
+				local invLen = 1 / math.sqrt(lenSq)
+				dirX = dirX * invLen
+				dirY = dirY * invLen
+			end
+
+			local bullet
+			if #bulletPool > 0 then
+				bullet = bulletPool[#bulletPool]
+				bulletPool[#bulletPool] = nil
+			else
+				bullet = {}
+			end
+			bullet.x = player.x
+			bullet.y = player.y
+			bullet.dx = dirX
+			bullet.dy = dirY
+			table.insert(bullets, bullet)
+			bulletCooldown = bulletFireRate
 		end
-		table.insert(bullets, { x = player.x, y = player.y, dx = dirX, dy = dirY })
-		bulletCooldown = bulletFireRate
 	end
 
 	for i = #bullets, 1, -1 do
@@ -309,26 +388,28 @@ function love.update(dt)
 		bullet.x = bullet.x + bullet.dx * bulletSpeed * dt
 		bullet.y = bullet.y + bullet.dy * bulletSpeed * dt
 
-		local distFromPlayer = math.sqrt((bullet.x - player.x) ^ 2 + (bullet.y - player.y) ^ 2)
-		if distFromPlayer > 1000 then
-			table.remove(bullets, i)
+		local distFromPlayerSq = (bullet.x - player.x) ^ 2 + (bullet.y - player.y) ^ 2
+		if distFromPlayerSq > 1000000 then
+			swapRemove(bullets, i)
 		end
 	end
 
+	buildGrid()
+
+	local bulletHitRadius = bulletSize + enemySize / 2
+	local bulletHitRadiusSq = bulletHitRadius * bulletHitRadius
+
 	for i = #bullets, 1, -1 do
 		local bullet = bullets[i]
+		local nearby = getNearbyEnemies(bullet.x, bullet.y, bulletHitRadius + enemySize)
 		local hit = false
 
-		for j = #enemies, 1, -1 do
-			local enemy = enemies[j]
-			local dx = bullet.x - enemy.x
-			local dy = bullet.y - enemy.y
-			local dist = math.sqrt(dx * dx + dy * dy)
-			if dist < bulletSize + enemy.size / 2 then
+		for _, enemy in ipairs(nearby) do
+			if distSq(bullet.x, bullet.y, enemy.x, enemy.y) < bulletHitRadiusSq then
 				enemy.hp = enemy.hp - 1
 				hit = true
 				if enemy.hp <= 0 then
-					table.remove(enemies, j)
+					enemy.dead = true
 					player.experience = player.experience + 10
 				end
 				break
@@ -336,8 +417,19 @@ function love.update(dt)
 		end
 
 		if hit then
-			table.remove(bullets, i)
+			swapRemove(bullets, i)
 		end
+	end
+
+	local writeIdx = 1
+	for readIdx = 1, #enemies do
+		if not enemies[readIdx].dead then
+			enemies[writeIdx] = enemies[readIdx]
+			writeIdx = writeIdx + 1
+		end
+	end
+	for i = writeIdx, #enemies do
+		enemies[i] = nil
 	end
 
 	boomerangCooldown = boomerangCooldown - dt
@@ -355,6 +447,9 @@ function love.update(dt)
 		boomerangCooldown = math.max(1, 6 - math.floor(player.level / 5))
 	end
 
+	local boomerangHitRadius = boomerangSize + enemySize / 2
+	local boomerangHitRadiusSq = boomerangHitRadius * boomerangHitRadius
+
 	for i = #boomerangs, 1, -1 do
 		local b = boomerangs[i]
 		b.angle = b.angle + boomerangRotationSpeed * dt
@@ -362,17 +457,14 @@ function love.update(dt)
 		b.x = b.originX + math.cos(b.angle) * b.radius
 		b.y = b.originY + math.sin(b.angle) * b.radius
 
-		for j = #enemies, 1, -1 do
-			local enemy = enemies[j]
+		local nearby = getNearbyEnemies(b.x, b.y, boomerangHitRadius + enemySize)
+		for _, enemy in ipairs(nearby) do
 			if not b.hitEnemies[enemy] then
-				local dx = b.x - enemy.x
-				local dy = b.y - enemy.y
-				local dist = math.sqrt(dx * dx + dy * dy)
-				if dist < boomerangSize + enemy.size / 2 then
+				if distSq(b.x, b.y, enemy.x, enemy.y) < boomerangHitRadiusSq then
 					enemy.hp = enemy.hp - 3
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
-						table.remove(enemies, j)
+						enemy.dead = true
 						player.experience = player.experience + 10
 					end
 				end
@@ -382,7 +474,7 @@ function love.update(dt)
 		local screenX = b.x - camera.x
 		local screenY = b.y - camera.y
 		if screenX < -50 or screenX > window_width + 50 or screenY < -50 or screenY > window_height + 50 then
-			table.remove(boomerangs, i)
+			swapRemove(boomerangs, i)
 		end
 	end
 
@@ -416,31 +508,27 @@ function love.draw()
 		love.graphics.line(0, screenY, window_width, screenY)
 	end
 
-	local legendFont = love.graphics.newFont(24)
-	love.graphics.setFont(legendFont)
+	love.graphics.setFont(font24)
 	love.graphics.setColor(1, 1, 1)
 	love.graphics.print("HP: " .. player.hp, 10, 10)
-
 	love.graphics.print("Level: " .. player.level, 10, 30)
 	local xpNeeded = 100 + (player.level - 1) * 50
 	love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
 	love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
 
-	local statsFont = love.graphics.newFont(24)
-	love.graphics.setFont(statsFont)
 	local statsX = window_width - 10
 	love.graphics.setColor(1, 1, 1)
 	local fireRateText = "Fire Rate: " .. fireRateLevel .. "/s"
 	local moveSpeedText = "Move Speed: " .. player.speed
 	local detectRangeText = "Detection: " .. detectionRange
-	love.graphics.print(fireRateText, statsX - statsFont:getWidth(fireRateText), 10)
-	love.graphics.print(moveSpeedText, statsX - statsFont:getWidth(moveSpeedText), 30)
-	love.graphics.print(detectRangeText, statsX - statsFont:getWidth(detectRangeText), 50)
+	love.graphics.print(fireRateText, statsX - font24:getWidth(fireRateText), 10)
+	love.graphics.print(moveSpeedText, statsX - font24:getWidth(moveSpeedText), 30)
+	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 50)
 
 	if player.level >= 5 then
 		local boomerangCd = math.max(1, 6 - math.floor(player.level / 5))
 		local boomerangText = "Boomerang: " .. string.format("%.1f", boomerangCooldown) .. "/" .. boomerangCd .. "s"
-		love.graphics.print(boomerangText, statsX - statsFont:getWidth(boomerangText), 70)
+		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 70)
 	end
 
 	love.graphics.setColor(1, 1, 1)
@@ -456,21 +544,42 @@ function love.draw()
 	for _, enemy in ipairs(enemies) do
 		local screenX = enemy.x - camera.x
 		local screenY = enemy.y - camera.y
-		love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+		if
+			screenX > -enemy.size
+			and screenX < window_width + enemy.size
+			and screenY > -enemy.size
+			and screenY < window_height + enemy.size
+		then
+			love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+		end
 	end
 
 	love.graphics.setColor(0.5, 0.5, 0.5)
 	for _, bullet in ipairs(bullets) do
 		local screenX = bullet.x - camera.x
 		local screenY = bullet.y - camera.y
-		love.graphics.circle("fill", screenX, screenY, bulletSize)
+		if
+			screenX > -bulletSize
+			and screenX < window_width + bulletSize
+			and screenY > -bulletSize
+			and screenY < window_height + bulletSize
+		then
+			love.graphics.circle("fill", screenX, screenY, bulletSize)
+		end
 	end
 
 	love.graphics.setColor(0, 1, 1)
 	for _, b in ipairs(boomerangs) do
 		local screenX = b.x - camera.x
 		local screenY = b.y - camera.y
-		love.graphics.circle("fill", screenX, screenY, boomerangSize)
+		if
+			screenX > -boomerangSize
+			and screenX < window_width + boomerangSize
+			and screenY > -boomerangSize
+			and screenY < window_height + boomerangSize
+		then
+			love.graphics.circle("fill", screenX, screenY, boomerangSize)
+		end
 	end
 
 	if gameOver then
@@ -478,16 +587,14 @@ function love.draw()
 		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
 
 		love.graphics.setColor(1, 1, 1)
-		local gameOverFont = love.graphics.newFont(48)
-		love.graphics.setFont(gameOverFont)
+		love.graphics.setFont(font48)
 		local gameOverText = "Game Over"
-		local textWidth = gameOverFont:getWidth(gameOverText)
+		local textWidth = font48:getWidth(gameOverText)
 		love.graphics.print(gameOverText, (window_width / 2) - textWidth / 2, 250)
 
-		local legendFont = love.graphics.newFont(24)
-		love.graphics.setFont(legendFont)
+		love.graphics.setFont(font24)
 		local legendText = "Press ENTER to restart or A in the controller (Escape to quit)"
-		local legendWidth = legendFont:getWidth(legendText)
+		local legendWidth = font24:getWidth(legendText)
 		love.graphics.print(legendText, (window_width / 2) - legendWidth / 2, 330)
 	end
 
@@ -496,16 +603,14 @@ function love.draw()
 		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
 
 		love.graphics.setColor(1, 1, 1)
-		local pauseFont = love.graphics.newFont(48)
-		love.graphics.setFont(pauseFont)
+		love.graphics.setFont(font48)
 		local pauseText = "PAUSED"
-		local textWidth = pauseFont:getWidth(pauseText)
+		local textWidth = font48:getWidth(pauseText)
 		love.graphics.print(pauseText, (window_width / 2) - textWidth / 2, window_height / 2 - 24)
 
-		local hintFont = love.graphics.newFont(24)
-		love.graphics.setFont(hintFont)
+		love.graphics.setFont(font24)
 		local hintText = "Press P, ENTER, or START to resume"
-		local hintWidth = hintFont:getWidth(hintText)
+		local hintWidth = font24:getWidth(hintText)
 		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, window_height / 2 + 30)
 	end
 
@@ -514,14 +619,12 @@ function love.draw()
 		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
 
 		love.graphics.setColor(1, 1, 1)
-		local titleFont = love.graphics.newFont(48)
-		love.graphics.setFont(titleFont)
+		love.graphics.setFont(font48)
 		local titleText = "Level Up!"
-		local titleWidth = titleFont:getWidth(titleText)
+		local titleWidth = font48:getWidth(titleText)
 		love.graphics.print(titleText, (window_width / 2) - titleWidth / 2, 100)
 
-		local itemFont = love.graphics.newFont(28)
-		love.graphics.setFont(itemFont)
+		love.graphics.setFont(font28)
 		local boxWidth = 280
 		local boxHeight = 150
 		local boxGap = 40
@@ -543,24 +646,23 @@ function love.draw()
 			love.graphics.rectangle("line", boxX, boxY, boxWidth, boxHeight)
 
 			local numberText = tostring(i)
-			local numWidth = itemFont:getWidth(numberText)
+			local numWidth = font28:getWidth(numberText)
 			love.graphics.print(numberText, boxX + (boxWidth - numWidth) / 2, boxY + 10)
 
 			local nameText = choice.name
-			local nameWidth = itemFont:getWidth(nameText)
+			local nameWidth = font28:getWidth(nameText)
 			love.graphics.print(nameText, boxX + (boxWidth - nameWidth) / 2, boxY + 50)
 
-			local descFont = love.graphics.newFont(20)
-			local descWidth = descFont:getWidth(choice.description)
-			love.graphics.setFont(descFont)
+			love.graphics.setFont(font20)
+			local descWidth = font20:getWidth(choice.description)
 			love.graphics.setColor(0.8, 0.8, 0.8)
 			love.graphics.print(choice.description, boxX + (boxWidth - descWidth) / 2, boxY + 90)
 		end
 
-		love.graphics.setFont(itemFont)
+		love.graphics.setFont(font28)
 		love.graphics.setColor(1, 1, 1)
 		local hintText = "Press 1, 2, or 3 to choose"
-		local hintWidth = itemFont:getWidth(hintText)
+		local hintWidth = font28:getWidth(hintText)
 		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, boxY + boxHeight + 30)
 	end
 end
