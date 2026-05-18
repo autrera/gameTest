@@ -30,6 +30,7 @@ function love.load()
     bulletSpeed = 600
     bulletSize = 4
     bulletFireRate = 1 / 3
+    fireRateLevel = 3
     bulletCooldown = 0
     detectionRange = 300
 
@@ -44,9 +45,9 @@ function love.load()
 
     upgradePool = {
         {
-            name = "Bullet Speed",
-            description = "+100 bullet speed",
-            apply = function() bulletSpeed = bulletSpeed + 100 end
+            name = "Fire Rate",
+            description = "+1 shot per second",
+            apply = function() fireRateLevel = fireRateLevel + 1; bulletFireRate = 1 / fireRateLevel end
         },
         {
             name = "Move Speed",
@@ -86,6 +87,8 @@ function resetGame()
 
     bulletSpeed = 600
     detectionRange = 300
+    fireRateLevel = 3
+    bulletFireRate = 1 / 3
 
     camera.x = player.x - (window_width / 2)
     camera.y = player.y - (window_height / 2)
@@ -344,6 +347,17 @@ function love.draw()
     love.graphics.print("Level: " .. player.level, 10, 30)
     love.graphics.print("XP: " .. player.experience .. "/100", 10, 50)
     love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
+
+    local statsFont = love.graphics.newFont(24)
+    love.graphics.setFont(statsFont)
+    local statsX = window_width - 10
+    love.graphics.setColor(1, 1, 1)
+    local fireRateText = "Fire Rate: " .. fireRateLevel .. "/s"
+    local moveSpeedText = "Move Speed: " .. player.speed
+    local detectRangeText = "Detection: " .. detectionRange
+    love.graphics.print(fireRateText, statsX - statsFont:getWidth(fireRateText), 10)
+    love.graphics.print(moveSpeedText, statsX - statsFont:getWidth(moveSpeedText), 30)
+    love.graphics.print(detectRangeText, statsX - statsFont:getWidth(detectRangeText), 50)
 
     love.graphics.setColor(1, 1, 1)
     love.graphics.rectangle("fill", (window_width / 2) - player.size / 2, (window_height / 2) - player.size / 2,
