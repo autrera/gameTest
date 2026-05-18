@@ -49,6 +49,8 @@ function love.load()
 	levelUpChoices = {}
 	selectedChoice = 1
 
+	paused = false
+
 	upgradePool = {
 		{
 			name = "Fire Rate",
@@ -116,6 +118,8 @@ function resetGame()
 	levelUpChoices = {}
 	selectedChoice = 1
 
+	paused = false
+
 	spawnEnemies()
 
 	gameOver = false
@@ -181,7 +185,7 @@ function findClosestEnemy()
 end
 
 function love.update(dt)
-	if gameOver or levelUpActive then
+	if gameOver or levelUpActive or paused then
 		return
 	end
 
@@ -487,6 +491,24 @@ function love.draw()
 		love.graphics.print(legendText, (window_width / 2) - legendWidth / 2, 330)
 	end
 
+	if paused then
+		love.graphics.setColor(0, 0, 0, 0.5)
+		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
+
+		love.graphics.setColor(1, 1, 1)
+		local pauseFont = love.graphics.newFont(48)
+		love.graphics.setFont(pauseFont)
+		local pauseText = "PAUSED"
+		local textWidth = pauseFont:getWidth(pauseText)
+		love.graphics.print(pauseText, (window_width / 2) - textWidth / 2, window_height / 2 - 24)
+
+		local hintFont = love.graphics.newFont(24)
+		love.graphics.setFont(hintFont)
+		local hintText = "Press P, ENTER, or START to resume"
+		local hintWidth = hintFont:getWidth(hintText)
+		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, window_height / 2 + 30)
+	end
+
 	if levelUpActive then
 		love.graphics.setColor(0, 0, 0, 0.7)
 		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
@@ -548,6 +570,10 @@ function love.keypressed(key)
 		love.event.quit()
 	elseif key == "r" then
 		resetGame()
+	elseif key == "p" then
+		paused = not paused
+	elseif key == "return" and not gameOver and not levelUpActive then
+		paused = not paused
 	elseif gameOver and key == "return" then
 		resetGame()
 	elseif levelUpActive then
@@ -581,7 +607,9 @@ function love.mousepressed(x, y, button)
 end
 
 function love.gamepadpressed(j, button)
-	if button == "a" and gameOver then
+	if button == "start" then
+		paused = not paused
+	elseif button == "a" and gameOver then
 		resetGame()
 	elseif button == "a" and levelUpActive then
 		selectUpgrade(selectedChoice)
