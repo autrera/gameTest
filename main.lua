@@ -24,7 +24,7 @@ function love.load()
     enemies = {}
     enemySize = 32
     enemySpeed = 48
-    maxEnemies = 10
+    baseMaxEnemies = 10
 
     bullets = {}
     bulletSpeed = 600
@@ -122,6 +122,7 @@ function generateLevelUpChoices()
 end
 
 function spawnEnemies()
+    local maxEnemies = baseMaxEnemies + (player.level - 1) * 10
     while #enemies < maxEnemies do
         local edge = math.random(4)
         local margin = 50
@@ -141,7 +142,7 @@ function spawnEnemies()
             y = camera.y + window_height + margin
         end
 
-        table.insert(enemies, { x = x, y = y, size = enemySize, hp = 5 })
+        table.insert(enemies, { x = x, y = y, size = enemySize, hp = 3 })
     end
 end
 
