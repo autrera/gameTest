@@ -36,9 +36,9 @@ function love.load()
 
 	boomerangs = {}
 	boomerangCooldown = 0
-	boomerangSize = 8
-	boomerangRotationSpeed = 5
-	boomerangExpandSpeed = 90
+	boomerangSize = 12
+	boomerangRotationSpeed = 6
+	boomerangExpandSpeed = 60
 
 	gameOver = false
 
@@ -342,7 +342,7 @@ function love.update(dt)
 
 	boomerangCooldown = boomerangCooldown - dt
 
-	if player.level >= 5 and #boomerangs == 0 and boomerangCooldown <= 0 then
+	if player.level >= 5 and boomerangCooldown <= 0 then
 		table.insert(boomerangs, {
 			x = player.x,
 			y = player.y,
