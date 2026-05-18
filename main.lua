@@ -365,7 +365,7 @@ function love.update(dt)
 				local dy = b.y - enemy.y
 				local dist = math.sqrt(dx * dx + dy * dy)
 				if dist < boomerangSize + enemy.size / 2 then
-					enemy.hp = enemy.hp - 1
+					enemy.hp = enemy.hp - 3
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
 						table.remove(enemies, j)
