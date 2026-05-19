@@ -90,6 +90,7 @@ function love.load()
 	enemies = {}
 	enemySize = 32
 	enemySpeed = 48
+	enemyExperience = 50
 	baseMaxEnemies = 10
 
 	bullets = {}
@@ -413,7 +414,7 @@ function love.update(dt)
 				hit = true
 				if enemy.hp <= 0 then
 					enemy.dead = true
-					player.experience = player.experience + 20
+					player.experience = player.experience + enemyExperience
 				end
 				break
 			end
@@ -437,7 +438,7 @@ function love.update(dt)
 
 	boomerangCooldown = boomerangCooldown - dt
 
-	if player.level >= 5 and boomerangCooldown <= 0 then
+	if player.level >= 4 and boomerangCooldown <= 0 then
 		table.insert(boomerangs, {
 			x = player.x,
 			y = player.y,
@@ -447,7 +448,7 @@ function love.update(dt)
 			radius = 0,
 			hitEnemies = {},
 		})
-		boomerangCooldown = math.max(1, 6 - math.floor(player.level / 5))
+		boomerangCooldown = math.max(1, 6 - math.floor(player.level / 4))
 	end
 
 	local boomerangHitRadius = boomerangSize + enemySize / 2
@@ -468,7 +469,7 @@ function love.update(dt)
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
 						enemy.dead = true
-						player.experience = player.experience + 20
+						player.experience = player.experience + enemyExperience
 					end
 				end
 			end
@@ -531,8 +532,8 @@ function love.draw()
 	love.graphics.print(moveSpeedText, statsX - font24:getWidth(moveSpeedText), 30)
 	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 50)
 
-	if player.level >= 5 then
-		local boomerangCd = math.max(1, 6 - math.floor(player.level / 5))
+	if player.level >= 4 then
+		local boomerangCd = math.max(1, 6 - math.floor(player.level / 4))
 		local boomerangText = "Boomerang: " .. string.format("%.1f", boomerangCooldown) .. "/" .. boomerangCd .. "s"
 		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 70)
 	end
