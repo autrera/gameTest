@@ -84,6 +84,9 @@ function love.load()
 		y = 0,
 	}
 
+	xpNeededA = 0
+	xpNeededB = 100
+
 	enemies = {}
 	enemySize = 32
 	enemySpeed = 48
@@ -410,7 +413,7 @@ function love.update(dt)
 				hit = true
 				if enemy.hp <= 0 then
 					enemy.dead = true
-					player.experience = player.experience + 10
+					player.experience = player.experience + 20
 				end
 				break
 			end
@@ -465,7 +468,7 @@ function love.update(dt)
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
 						enemy.dead = true
-						player.experience = player.experience + 10
+						player.experience = player.experience + 20
 					end
 				end
 			end
@@ -478,8 +481,11 @@ function love.update(dt)
 		end
 	end
 
-	local xpNeeded = 100 + (player.level - 1) * 50
+	local xpNeeded = xpNeededA + xpNeededB
 	if player.experience >= xpNeeded then
+		_xpNeededB = xpNeededB
+		xpNeededB = xpNeededA + xpNeededB
+		xpNeededA = _xpNeededB
 		player.experience = player.experience - xpNeeded
 		player.level = player.level + 1
 		generateLevelUpChoices()
@@ -512,7 +518,7 @@ function love.draw()
 	love.graphics.setColor(1, 1, 1)
 	love.graphics.print("HP: " .. player.hp, 10, 10)
 	love.graphics.print("Level: " .. player.level, 10, 30)
-	local xpNeeded = 100 + (player.level - 1) * 50
+	local xpNeeded = xpNeededA + xpNeededB
 	love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
 	love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
 
