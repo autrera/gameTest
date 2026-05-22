@@ -186,6 +186,10 @@ function resetGame()
 	fireRateLevel = 3
 	bulletFireRate = 1 / 3
 
+	xpNeededA = 0
+	xpNeededB = 100
+	xpNeeded = xpNeededA + xpNeededB
+
 	camera.x = player.x - (window_width / 2)
 	camera.y = player.y - (window_height / 2)
 
