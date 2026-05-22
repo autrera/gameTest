@@ -86,6 +86,7 @@ function love.load()
 
 	xpNeededA = 0
 	xpNeededB = 100
+	xpNeeded = xpNeededA + xpNeededB
 
 	enemies = {}
 	enemySize = 32
@@ -148,6 +149,10 @@ function love.load()
 	bulletPool = {}
 	bulletPoolMax = 500
 
+	totalKills = 0
+	chests = {}
+	powerBulletsRemaining = 0
+
 	resetGame()
 end
 
@@ -197,6 +202,10 @@ function resetGame()
 		bulletPool[i] = nil
 	end
 
+	totalKills = 0
+	chests = {}
+	powerBulletsRemaining = 0
+
 	spawnEnemies()
 
 	gameOver = false
@@ -220,7 +229,7 @@ function generateLevelUpChoices()
 end
 
 function spawnEnemies()
-	local maxEnemies = baseMaxEnemies + (player.level - 1) * 10
+	local maxEnemies = baseMaxEnemies + (player.level - 1) * 20
 	while #enemies < maxEnemies do
 		local edge = math.random(4)
 		local margin = 50
@@ -382,6 +391,10 @@ function love.update(dt)
 			bullet.y = player.y
 			bullet.dx = dirX
 			bullet.dy = dirY
+			bullet.isPower = powerBulletsRemaining > 0
+			if powerBulletsRemaining > 0 then
+				powerBulletsRemaining = powerBulletsRemaining - 1
+			end
 			table.insert(bullets, bullet)
 			bulletCooldown = bulletFireRate
 		end
@@ -410,17 +423,25 @@ function love.update(dt)
 
 		for _, enemy in ipairs(nearby) do
 			if distSq(bullet.x, bullet.y, enemy.x, enemy.y) < bulletHitRadiusSq then
-				enemy.hp = enemy.hp - 1
+				local damage = bullet.isPower and 2 or 1
+				enemy.hp = enemy.hp - damage
 				hit = true
 				if enemy.hp <= 0 then
 					enemy.dead = true
 					player.experience = player.experience + enemyExperience
+					totalKills = totalKills + 1
+					if totalKills >= 1000 then
+						totalKills = 0
+						table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
+					end
 				end
-				break
+				if not bullet.isPower then
+					break
+				end
 			end
 		end
 
-		if hit then
+		if hit and not bullet.isPower then
 			swapRemove(bullets, i)
 		end
 	end
@@ -470,6 +491,11 @@ function love.update(dt)
 					if enemy.hp <= 0 then
 						enemy.dead = true
 						player.experience = player.experience + enemyExperience
+						totalKills = totalKills + 1
+						if totalKills >= 1000 then
+							totalKills = 0
+							table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
+						end
 					end
 				end
 			end
@@ -482,7 +508,22 @@ function love.update(dt)
 		end
 	end
 
-	local xpNeeded = xpNeededA + xpNeededB
+	for i = #chests, 1, -1 do
+		local c = chests[i]
+		local halfC = c.size / 2
+		local halfP = player.size / 2
+		if
+			player.x + halfP > c.x - halfC
+			and player.x - halfP < c.x + halfC
+			and player.y + halfP > c.y - halfC
+			and player.y - halfP < c.y + halfC
+		then
+			powerBulletsRemaining = 100
+			swapRemove(chests, i)
+		end
+	end
+
+	xpNeeded = xpNeededA + xpNeededB
 	if player.experience >= xpNeeded then
 		_xpNeededB = xpNeededB
 		xpNeededB = xpNeededA + xpNeededB
@@ -519,9 +560,12 @@ function love.draw()
 	love.graphics.setColor(1, 1, 1)
 	love.graphics.print("HP: " .. player.hp, 10, 10)
 	love.graphics.print("Level: " .. player.level, 10, 30)
-	local xpNeeded = xpNeededA + xpNeededB
 	love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
 	love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
+	if powerBulletsRemaining > 0 then
+		love.graphics.setColor(0, 1, 0)
+		love.graphics.print("Powered Shots: " .. powerBulletsRemaining, 10, 90)
+	end
 
 	local statsX = window_width - 10
 	love.graphics.setColor(1, 1, 1)
@@ -561,7 +605,33 @@ function love.draw()
 		end
 	end
 
-	love.graphics.setColor(0.5, 0.5, 0.5)
+	love.graphics.setColor(0.6, 0.3, 0.1)
+	for _, c in ipairs(chests) do
+		local screenX = c.x - camera.x
+		local screenY = c.y - camera.y
+		if
+			screenX > -c.size
+			and screenX < window_width + c.size
+			and screenY > -c.size
+			and screenY < window_height + c.size
+		then
+			love.graphics.rectangle("fill", screenX - c.size / 2, screenY - c.size / 2, c.size, c.size)
+		end
+	end
+	love.graphics.setColor(0, 0, 0)
+	for _, c in ipairs(chests) do
+		local screenX = c.x - camera.x
+		local screenY = c.y - camera.y
+		if
+			screenX > -c.size
+			and screenX < window_width + c.size
+			and screenY > -c.size
+			and screenY < window_height + c.size
+		then
+			love.graphics.rectangle("line", screenX - c.size / 2, screenY - c.size / 2, c.size, c.size)
+		end
+	end
+
 	for _, bullet in ipairs(bullets) do
 		local screenX = bullet.x - camera.x
 		local screenY = bullet.y - camera.y
@@ -571,7 +641,13 @@ function love.draw()
 			and screenY > -bulletSize
 			and screenY < window_height + bulletSize
 		then
-			love.graphics.circle("fill", screenX, screenY, bulletSize)
+			if bullet.isPower then
+				love.graphics.setColor(0, 1, 0)
+				love.graphics.circle("fill", screenX, screenY, bulletSize * 3)
+			else
+				love.graphics.setColor(0.5, 0.5, 0.5)
+				love.graphics.circle("fill", screenX, screenY, bulletSize)
+			end
 		end
 	end
 
