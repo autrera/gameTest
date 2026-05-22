@@ -120,6 +120,8 @@ function love.load()
 
 	paused = false
 
+	killsForPowerup = 200
+
 	upgradePool = {
 		{
 			name = "Fire Rate",
@@ -152,6 +154,7 @@ function love.load()
 	totalKills = 0
 	chests = {}
 	powerBulletsRemaining = 0
+	powerBulletsPerChest = 100
 
 	resetGame()
 end
@@ -430,7 +433,7 @@ function love.update(dt)
 					enemy.dead = true
 					player.experience = player.experience + enemyExperience
 					totalKills = totalKills + 1
-					if totalKills >= 1000 then
+					if totalKills >= killsForPowerup then
 						totalKills = 0
 						table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
 					end
@@ -492,7 +495,7 @@ function love.update(dt)
 						enemy.dead = true
 						player.experience = player.experience + enemyExperience
 						totalKills = totalKills + 1
-						if totalKills >= 1000 then
+						if totalKills >= killsForPowerup then
 							totalKills = 0
 							table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
 						end
@@ -518,7 +521,7 @@ function love.update(dt)
 			and player.y + halfP > c.y - halfC
 			and player.y - halfP < c.y + halfC
 		then
-			powerBulletsRemaining = 100
+			powerBulletsRemaining = powerBulletsRemaining + powerBulletsPerChest
 			swapRemove(chests, i)
 		end
 	end
