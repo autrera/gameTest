@@ -120,6 +120,14 @@ function love.load()
 
 	paused = false
 
+	dashWanted = false
+	dashTimer = 0
+	dashCooldown = 0
+	dashDuration = 0.25
+	dashRecovery = 0.30
+	dashDirX = 0
+	dashDirY = 0
+
 	killsForPowerup = 200
 
 	upgradePool = {
@@ -204,6 +212,12 @@ function resetGame()
 	selectedChoice = 1
 
 	paused = false
+
+	dashWanted = false
+	dashTimer = 0
+	dashCooldown = 0
+	dashDirX = 0
+	dashDirY = 0
 
 	for i = 1, #bulletPool do
 		bulletPool[i] = nil
@@ -332,8 +346,26 @@ function love.update(dt)
 		dy = dy / len
 	end
 
-	player.x = player.x + dx * player.speed * dt
-	player.y = player.y + dy * player.speed * dt
+	if dashWanted and (dx ~= 0 or dy ~= 0) and dashTimer <= 0 and dashCooldown <= 0 then
+		dashDirX = dx
+		dashDirY = dy
+		dashTimer = dashDuration
+	end
+	dashWanted = false
+
+	if dashTimer > 0 then
+		player.x = player.x + dashDirX * player.speed * 2 * dt
+		player.y = player.y + dashDirY * player.speed * 2 * dt
+		dashTimer = dashTimer - dt
+		if dashTimer <= 0 then
+			dashCooldown = dashRecovery
+		end
+	elseif dashCooldown > 0 then
+		dashCooldown = dashCooldown - dt
+	else
+		player.x = player.x + dx * player.speed * dt
+		player.y = player.y + dy * player.speed * dt
+	end
 
 	camera.x = player.x - (window_width / 2)
 	camera.y = player.y - (window_height / 2)
@@ -760,6 +792,8 @@ end
 function love.keypressed(key)
 	if key == "escape" then
 		love.event.quit()
+	elseif key == "space" and not gameOver and not levelUpActive then
+		dashWanted = true
 	elseif key == "r" then
 		resetGame()
 	elseif key == "p" then
@@ -805,6 +839,8 @@ function love.gamepadpressed(j, button)
 		resetGame()
 	elseif button == "a" and levelUpActive then
 		selectUpgrade(selectedChoice)
+	elseif button == "a" then
+		dashWanted = true
 	elseif levelUpActive then
 		if button == "dpleft" or button == "leftshoulder" then
 			selectedChoice = math.max(1, selectedChoice - 1)
