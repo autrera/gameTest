@@ -94,6 +94,11 @@ function love.load()
 	enemyExperience = 50
 	baseMaxEnemies = 10
 
+	specialEnemySize = 64
+	specialEnemyHp = 100
+	specialEnemySpeed = 32
+	specialEnemyExperience = 200
+
 	bullets = {}
 	bulletSpeed = 600
 	bulletSize = 4
@@ -123,12 +128,12 @@ function love.load()
 	dashWanted = false
 	dashTimer = 0
 	dashCooldown = 0
-	dashDuration = 0.25
-	dashRecovery = 0.30
+	dashDuration = 0.35
+	dashRecovery = 0.40
 	dashDirX = 0
 	dashDirY = 0
 
-	killsForPowerup = 200
+	killsForSpecial = 200
 
 	upgradePool = {
 		{
@@ -270,8 +275,36 @@ function spawnEnemies()
 			y = camera.y + window_height + margin
 		end
 
-		table.insert(enemies, { x = x, y = y, size = enemySize, hp = 3 })
+		table.insert(enemies, { x = x, y = y, size = enemySize, hp = 3, isSpecial = false })
 	end
+end
+
+function spawnSpecialEnemy()
+	local edge = math.random(4)
+	local margin = 50
+	local x, y
+
+	if edge == 1 then
+		x = camera.x - margin
+		y = camera.y + math.random() * window_height
+	elseif edge == 2 then
+		x = camera.x + window_width + margin
+		y = camera.y + math.random() * window_height
+	elseif edge == 3 then
+		x = camera.x + math.random() * window_width
+		y = camera.y - margin
+	else
+		x = camera.x + math.random() * window_width
+		y = camera.y + window_height + margin
+	end
+
+	table.insert(enemies, {
+		x = x,
+		y = y,
+		size = specialEnemySize,
+		hp = specialEnemyHp,
+		isSpecial = true,
+	})
 end
 
 function findClosestEnemy()
@@ -371,6 +404,7 @@ function love.update(dt)
 	camera.y = player.y - (window_height / 2)
 
 	for _, enemy in ipairs(enemies) do
+		local speed = enemy.isSpecial and specialEnemySpeed or enemySpeed
 		local dirX = player.x - enemy.x
 		local dirY = player.y - enemy.y
 		local lenSq = dirX * dirX + dirY * dirY
@@ -379,8 +413,8 @@ function love.update(dt)
 			dirX = dirX * invLen
 			dirY = dirY * invLen
 		end
-		enemy.x = enemy.x + dirX * enemySpeed * dt
-		enemy.y = enemy.y + dirY * enemySpeed * dt
+		enemy.x = enemy.x + dirX * speed * dt
+		enemy.y = enemy.y + dirY * speed * dt
 	end
 
 	player.damageCooldown = player.damageCooldown - dt
@@ -467,11 +501,16 @@ function love.update(dt)
 				hit = true
 				if enemy.hp <= 0 then
 					enemy.dead = true
-					player.experience = player.experience + enemyExperience
-					totalKills = totalKills + 1
-					if totalKills >= killsForPowerup then
-						totalKills = 0
+					local xpGain = enemy.isSpecial and specialEnemyExperience or enemyExperience
+					player.experience = player.experience + xpGain
+					if enemy.isSpecial then
 						table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
+					else
+						totalKills = totalKills + 1
+						if totalKills >= killsForSpecial then
+							totalKills = 0
+							spawnSpecialEnemy()
+						end
 					end
 				end
 				if not bullet.isPower then
@@ -529,11 +568,16 @@ function love.update(dt)
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
 						enemy.dead = true
-						player.experience = player.experience + enemyExperience
-						totalKills = totalKills + 1
-						if totalKills >= killsForPowerup then
-							totalKills = 0
+						local xpGain = enemy.isSpecial and specialEnemyExperience or enemyExperience
+						player.experience = player.experience + xpGain
+						if enemy.isSpecial then
 							table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
+						else
+							totalKills = totalKills + 1
+							if totalKills >= killsForSpecial then
+								totalKills = 0
+								spawnSpecialEnemy()
+							end
 						end
 					end
 				end
@@ -601,9 +645,10 @@ function love.draw()
 	love.graphics.print("Level: " .. player.level, 10, 30)
 	love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
 	love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
+	love.graphics.print("Kills: " .. totalKills .. "/" .. killsForSpecial, 10, 90)
 	if powerBulletsRemaining > 0 then
 		love.graphics.setColor(0, 1, 0)
-		love.graphics.print("Powered Shots: " .. powerBulletsRemaining, 10, 90)
+		love.graphics.print("Powered Shots: " .. powerBulletsRemaining, 10, 110)
 	end
 
 	local statsX = window_width - 10
@@ -630,7 +675,6 @@ function love.draw()
 		player.size
 	)
 
-	love.graphics.setColor(1, 0, 0)
 	for _, enemy in ipairs(enemies) do
 		local screenX = enemy.x - camera.x
 		local screenY = enemy.y - camera.y
@@ -640,7 +684,25 @@ function love.draw()
 			and screenY > -enemy.size
 			and screenY < window_height + enemy.size
 		then
-			love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+			if enemy.isSpecial then
+				-- Draw special enemy in purple with an outline
+				love.graphics.setColor(0.6, 0, 0.8)
+				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+				love.graphics.setColor(1, 0.8, 0)
+				love.graphics.rectangle("line", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+				-- HP bar above special enemy
+				local barWidth = enemy.size
+				local barHeight = 6
+				local barX = screenX - barWidth / 2
+				local barY = screenY - enemy.size / 2 - 12
+				love.graphics.setColor(0.3, 0, 0)
+				love.graphics.rectangle("fill", barX, barY, barWidth, barHeight)
+				love.graphics.setColor(0.8, 0, 1)
+				love.graphics.rectangle("fill", barX, barY, barWidth * (enemy.hp / specialEnemyHp), barHeight)
+			else
+				love.graphics.setColor(1, 0, 0)
+				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+			end
 		end
 	end
 
