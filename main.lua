@@ -102,6 +102,7 @@ function love.load()
 	bullets = {}
 	bulletSpeed = 600
 	bulletSize = 4
+	bulletDamage = 1
 	bulletFireRate = 1 / 3
 	fireRateLevel = 3
 	bulletCooldown = 0
@@ -159,6 +160,13 @@ function love.load()
 				detectionRangeSq = detectionRange * detectionRange
 			end,
 		},
+		{
+			name = "Bullet Damage",
+			description = "+1 bullet damage",
+			apply = function()
+				bulletDamage = bulletDamage + 1
+			end,
+		},
 	}
 
 	bulletPool = {}
@@ -194,6 +202,7 @@ function resetGame()
 	player.level = 1
 
 	bulletSpeed = 600
+	bulletDamage = 1
 	detectionRange = 300
 	detectionRangeSq = detectionRange * detectionRange
 	fireRateLevel = 3
@@ -496,7 +505,7 @@ function love.update(dt)
 
 		for _, enemy in ipairs(nearby) do
 			if distSq(bullet.x, bullet.y, enemy.x, enemy.y) < bulletHitRadiusSq then
-				local damage = bullet.isPower and 2 or 1
+				local damage = bullet.isPower and (bulletDamage * 2) or bulletDamage
 				enemy.hp = enemy.hp - damage
 				hit = true
 				if enemy.hp <= 0 then
@@ -656,14 +665,16 @@ function love.draw()
 	local fireRateText = "Fire Rate: " .. fireRateLevel .. "/s"
 	local moveSpeedText = "Move Speed: " .. player.speed
 	local detectRangeText = "Detection: " .. detectionRange
+	local damageText = "Damage: " .. bulletDamage
 	love.graphics.print(fireRateText, statsX - font24:getWidth(fireRateText), 10)
 	love.graphics.print(moveSpeedText, statsX - font24:getWidth(moveSpeedText), 30)
 	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 50)
+	love.graphics.print(damageText, statsX - font24:getWidth(damageText), 70)
 
 	if player.level >= 4 then
 		local boomerangCd = math.max(1, 6 - math.floor(player.level / 4))
 		local boomerangText = "Boomerang: " .. string.format("%.1f", boomerangCooldown) .. "/" .. boomerangCd .. "s"
-		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 70)
+		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 90)
 	end
 
 	love.graphics.setColor(1, 1, 1)
