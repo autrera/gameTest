@@ -144,6 +144,7 @@ function love.load()
 	dashDirY = 0
 
 	killsForSpecial = 200
+	killsForSpecialScale = 1.5
 
 	upgradePool = {
 		{
@@ -250,6 +251,7 @@ function resetGame()
 	chests = {}
 	powerBulletsRemaining = 0
 	specialEnemySpawnCount = 0
+	killsForSpecial = 200
 
 	spawnEnemies()
 
@@ -582,7 +584,8 @@ function love.update(dt)
 					else
 						totalKills = totalKills + 1
 						if totalKills >= killsForSpecial then
-							totalKills = 0
+							totalKills = totalKills - killsForSpecial
+							killsForSpecial = math.floor(killsForSpecial * killsForSpecialScale)
 							spawnSpecialEnemy()
 						end
 					end
@@ -658,7 +661,8 @@ function love.update(dt)
 						else
 							totalKills = totalKills + 1
 							if totalKills >= killsForSpecial then
-								totalKills = 0
+								totalKills = totalKills - killsForSpecial
+								killsForSpecial = math.floor(killsForSpecial * killsForSpecialScale)
 								spawnSpecialEnemy()
 							end
 						end
