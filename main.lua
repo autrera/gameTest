@@ -724,6 +724,7 @@ function love.update(dt)
 		xpNeededA = _xpNeededB
 		player.experience = player.experience - xpNeeded
 		player.level = player.level + 1
+		player.hp = math.min(100, player.hp + 5)
 		generateLevelUpChoices()
 		selectedChoice = 1
 		levelUpActive = true
