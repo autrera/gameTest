@@ -60,6 +60,7 @@ local function getNearbyEnemies(x, y, radius)
 end
 
 function love.load()
+	math.randomseed(os.time())
 	love.window.setMode(window_width, window_height)
 
 	font20 = love.graphics.newFont(20)
