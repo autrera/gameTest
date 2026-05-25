@@ -133,6 +133,8 @@ function love.load()
 	levelUpActive = false
 	levelUpChoices = {}
 	selectedChoice = 1
+	levelUpInputDelay = 0
+	levelUpInputDelayDuration = 1.0
 
 	paused = false
 
@@ -235,6 +237,7 @@ function resetGame()
 	levelUpActive = false
 	levelUpChoices = {}
 	selectedChoice = 1
+	levelUpInputDelay = 0
 
 	paused = false
 
@@ -382,6 +385,10 @@ function findClosestEnemy()
 end
 
 function love.update(dt)
+	if levelUpActive and levelUpInputDelay > 0 then
+		levelUpInputDelay = levelUpInputDelay - dt
+	end
+
 	if gameOver or levelUpActive or paused then
 		return
 	end
@@ -729,6 +736,7 @@ function love.update(dt)
 		generateLevelUpChoices()
 		selectedChoice = 1
 		levelUpActive = true
+		levelUpInputDelay = levelUpInputDelayDuration
 	end
 
 	spawnEnemies()
@@ -1032,6 +1040,9 @@ function love.gamepadpressed(j, button)
 end
 
 function selectUpgrade(index)
+	if levelUpInputDelay > 0 then
+		return
+	end
 	if index >= 1 and index <= #levelUpChoices then
 		levelUpChoices[index].apply()
 		levelUpActive = false
