@@ -96,7 +96,7 @@ function love.load()
 
 	specialEnemySize = 64
 	specialEnemyHp = 100
-	specialEnemySpeed = 32
+	specialEnemySpeed = 64
 	specialEnemyExperience = 200
 
 	bullets = {}
