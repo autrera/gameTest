@@ -524,6 +524,8 @@ function love.update(dt)
 			if #bulletPool > 0 then
 				bullet = bulletPool[#bulletPool]
 				bulletPool[#bulletPool] = nil
+				bullet.damageRemaining = nil
+				bullet.hitEnemies = nil
 			else
 				bullet = {}
 			end
@@ -532,6 +534,8 @@ function love.update(dt)
 			bullet.dx = dirX
 			bullet.dy = dirY
 			bullet.isPower = powerBulletsRemaining > 0
+			bullet.damageRemaining = bullet.isPower and (bulletDamage * 2) or bulletDamage
+			bullet.hitEnemies = {}
 			if powerBulletsRemaining > 0 then
 				powerBulletsRemaining = powerBulletsRemaining - 1
 			end
@@ -547,6 +551,11 @@ function love.update(dt)
 
 		local distFromPlayerSq = (bullet.x - player.x) ^ 2 + (bullet.y - player.y) ^ 2
 		if distFromPlayerSq > 1000000 then
+			if #bulletPool < bulletPoolMax then
+				bullet.damageRemaining = nil
+				bullet.hitEnemies = nil
+				table.insert(bulletPool, bullet)
+			end
 			swapRemove(bullets, i)
 		end
 	end
@@ -563,40 +572,55 @@ function love.update(dt)
 
 		for _, enemy in ipairs(nearby) do
 			if distSq(bullet.x, bullet.y, enemy.x, enemy.y) < bulletHitRadiusSq then
-				local damage = bullet.isPower and (bulletDamage * 2) or bulletDamage
-				enemy.hp = enemy.hp - damage
-				hit = true
-				if enemy.hp <= 0 then
-					enemy.dead = true
-					local xpGain = enemy.experience
-					if not xpGain then
-						if enemy.isSpecial then
-							xpGain = specialEnemyExperience
-						elseif enemy.isElite then
-							xpGain = eliteEnemyExperience
-						else
-							xpGain = enemyExperience
-						end
-					end
-					player.experience = player.experience + xpGain
-					if enemy.isSpecial then
-						table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
-					else
-						totalKills = totalKills + 1
-						if totalKills >= killsForSpecial then
-							totalKills = totalKills - killsForSpecial
-							killsForSpecial = math.floor(killsForSpecial * killsForSpecialScale)
-							spawnSpecialEnemy()
-						end
-					end
+				if not bullet.hitEnemies then
+					bullet.hitEnemies = {}
 				end
-				if not bullet.isPower then
-					break
+				if not bullet.hitEnemies[enemy] and enemy.hp > 0 then
+					bullet.hitEnemies[enemy] = true
+					hit = true
+
+					local damageToDeal = math.min(bullet.damageRemaining, enemy.hp)
+					enemy.hp = enemy.hp - damageToDeal
+					bullet.damageRemaining = bullet.damageRemaining - damageToDeal
+
+					if enemy.hp <= 0 then
+						enemy.dead = true
+						local xpGain = enemy.experience
+						if not xpGain then
+							if enemy.isSpecial then
+								xpGain = specialEnemyExperience
+							elseif enemy.isElite then
+								xpGain = eliteEnemyExperience
+							else
+								xpGain = enemyExperience
+							end
+						end
+						player.experience = player.experience + xpGain
+						if enemy.isSpecial then
+							table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
+						else
+							totalKills = totalKills + 1
+							if totalKills >= killsForSpecial then
+								totalKills = totalKills - killsForSpecial
+								killsForSpecial = math.floor(killsForSpecial * killsForSpecialScale)
+								spawnSpecialEnemy()
+							end
+						end
+					end
+
+					if bullet.damageRemaining <= 0 then
+						break
+					end
 				end
 			end
 		end
 
-		if hit and not bullet.isPower then
+		if hit and bullet.damageRemaining <= 0 then
+			if #bulletPool < bulletPoolMax then
+				bullet.damageRemaining = nil
+				bullet.hitEnemies = nil
+				table.insert(bulletPool, bullet)
+			end
 			swapRemove(bullets, i)
 		end
 	end
