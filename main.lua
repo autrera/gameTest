@@ -103,6 +103,10 @@ function love.load()
 	specialEnemyHp = 100
 	specialEnemySpeed = 64
 	specialEnemyExperience = 200
+	specialEnemySpawnCount = 0
+	specialEnemyHpScale = 1.15
+	specialEnemySpeedScale = 1.1
+	specialEnemyXpScale = 1.2
 
 	bullets = {}
 	bulletSpeed = 600
@@ -245,6 +249,7 @@ function resetGame()
 	totalKills = 0
 	chests = {}
 	powerBulletsRemaining = 0
+	specialEnemySpawnCount = 0
 
 	spawnEnemies()
 
@@ -320,6 +325,12 @@ function spawnEnemies()
 end
 
 function spawnSpecialEnemy()
+	specialEnemySpawnCount = specialEnemySpawnCount + 1
+	
+	local hpMultiplier = specialEnemyHpScale ^ specialEnemySpawnCount
+	local speedMultiplier = specialEnemySpeedScale ^ specialEnemySpawnCount
+	local xpMultiplier = specialEnemyXpScale ^ specialEnemySpawnCount
+	
 	local edge = math.random(4)
 	local margin = 50
 	local x, y
@@ -338,11 +349,15 @@ function spawnSpecialEnemy()
 		y = camera.y + window_height + margin
 	end
 
+	local hp = specialEnemyHp * hpMultiplier
 	table.insert(enemies, {
 		x = x,
 		y = y,
 		size = specialEnemySize,
-		hp = specialEnemyHp,
+		hp = hp,
+		maxHp = hp,
+		speed = specialEnemySpeed * speedMultiplier,
+		experience = specialEnemyExperience * xpMultiplier,
 		isSpecial = true,
 		isElite = false,
 	})
@@ -445,11 +460,15 @@ function love.update(dt)
 	camera.y = player.y - (window_height / 2)
 
 	for _, enemy in ipairs(enemies) do
-		local speed = enemySpeed
-		if enemy.isSpecial then
-			speed = specialEnemySpeed
-		elseif enemy.isElite then
-			speed = eliteEnemySpeed
+		local speed = enemy.speed
+		if not speed then
+			if enemy.isSpecial then
+				speed = specialEnemySpeed
+			elseif enemy.isElite then
+				speed = eliteEnemySpeed
+			else
+				speed = enemySpeed
+			end
 		end
 		local dirX = player.x - enemy.x
 		local dirY = player.y - enemy.y
@@ -547,11 +566,15 @@ function love.update(dt)
 				hit = true
 				if enemy.hp <= 0 then
 					enemy.dead = true
-					local xpGain = enemyExperience
-					if enemy.isSpecial then
-						xpGain = specialEnemyExperience
-					elseif enemy.isElite then
-						xpGain = eliteEnemyExperience
+					local xpGain = enemy.experience
+					if not xpGain then
+						if enemy.isSpecial then
+							xpGain = specialEnemyExperience
+						elseif enemy.isElite then
+							xpGain = eliteEnemyExperience
+						else
+							xpGain = enemyExperience
+						end
 					end
 					player.experience = player.experience + xpGain
 					if enemy.isSpecial then
@@ -619,11 +642,15 @@ function love.update(dt)
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
 						enemy.dead = true
-						local xpGain = enemyExperience
-						if enemy.isSpecial then
-							xpGain = specialEnemyExperience
-						elseif enemy.isElite then
-							xpGain = eliteEnemyExperience
+						local xpGain = enemy.experience
+						if not xpGain then
+							if enemy.isSpecial then
+								xpGain = specialEnemyExperience
+							elseif enemy.isElite then
+								xpGain = eliteEnemyExperience
+							else
+								xpGain = enemyExperience
+							end
 						end
 						player.experience = player.experience + xpGain
 						if enemy.isSpecial then
@@ -751,10 +778,11 @@ function love.draw()
 				local barHeight = 6
 				local barX = screenX - barWidth / 2
 				local barY = screenY - enemy.size / 2 - 12
+				local maxHp = enemy.maxHp or specialEnemyHp
 				love.graphics.setColor(0.3, 0, 0)
 				love.graphics.rectangle("fill", barX, barY, barWidth, barHeight)
 				love.graphics.setColor(0.8, 0, 1)
-				love.graphics.rectangle("fill", barX, barY, barWidth * (enemy.hp / specialEnemyHp), barHeight)
+				love.graphics.rectangle("fill", barX, barY, barWidth * (enemy.hp / maxHp), barHeight)
 			elseif enemy.isElite then
 				love.graphics.setColor(1, 0.5, 0)
 				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
