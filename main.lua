@@ -94,6 +94,11 @@ function love.load()
 	enemyExperience = 50
 	baseMaxEnemies = 10
 
+	eliteEnemySize = 40
+	eliteEnemyHp = 6
+	eliteEnemySpeed = 40
+	eliteEnemyExperience = 100
+
 	specialEnemySize = 64
 	specialEnemyHp = 100
 	specialEnemySpeed = 64
@@ -284,7 +289,33 @@ function spawnEnemies()
 			y = camera.y + window_height + margin
 		end
 
-		table.insert(enemies, { x = x, y = y, size = enemySize, hp = 3, isSpecial = false })
+		local enemyType = "normal"
+		if player.level >= 5 then
+			local roll = math.random()
+			if roll < 0.2 then
+				enemyType = "elite"
+			end
+		end
+
+		if enemyType == "elite" then
+			table.insert(enemies, {
+				x = x,
+				y = y,
+				size = eliteEnemySize,
+				hp = eliteEnemyHp,
+				isElite = true,
+				isSpecial = false,
+			})
+		else
+			table.insert(enemies, {
+				x = x,
+				y = y,
+				size = enemySize,
+				hp = 3,
+				isElite = false,
+				isSpecial = false,
+			})
+		end
 	end
 end
 
@@ -313,6 +344,7 @@ function spawnSpecialEnemy()
 		size = specialEnemySize,
 		hp = specialEnemyHp,
 		isSpecial = true,
+		isElite = false,
 	})
 end
 
@@ -413,7 +445,12 @@ function love.update(dt)
 	camera.y = player.y - (window_height / 2)
 
 	for _, enemy in ipairs(enemies) do
-		local speed = enemy.isSpecial and specialEnemySpeed or enemySpeed
+		local speed = enemySpeed
+		if enemy.isSpecial then
+			speed = specialEnemySpeed
+		elseif enemy.isElite then
+			speed = eliteEnemySpeed
+		end
 		local dirX = player.x - enemy.x
 		local dirY = player.y - enemy.y
 		local lenSq = dirX * dirX + dirY * dirY
@@ -510,7 +547,12 @@ function love.update(dt)
 				hit = true
 				if enemy.hp <= 0 then
 					enemy.dead = true
-					local xpGain = enemy.isSpecial and specialEnemyExperience or enemyExperience
+					local xpGain = enemyExperience
+					if enemy.isSpecial then
+						xpGain = specialEnemyExperience
+					elseif enemy.isElite then
+						xpGain = eliteEnemyExperience
+					end
 					player.experience = player.experience + xpGain
 					if enemy.isSpecial then
 						table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
@@ -577,7 +619,12 @@ function love.update(dt)
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
 						enemy.dead = true
-						local xpGain = enemy.isSpecial and specialEnemyExperience or enemyExperience
+						local xpGain = enemyExperience
+						if enemy.isSpecial then
+							xpGain = specialEnemyExperience
+						elseif enemy.isElite then
+							xpGain = eliteEnemyExperience
+						end
 						player.experience = player.experience + xpGain
 						if enemy.isSpecial then
 							table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
@@ -696,12 +743,10 @@ function love.draw()
 			and screenY < window_height + enemy.size
 		then
 			if enemy.isSpecial then
-				-- Draw special enemy in purple with an outline
 				love.graphics.setColor(0.6, 0, 0.8)
 				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
 				love.graphics.setColor(1, 0.8, 0)
 				love.graphics.rectangle("line", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
-				-- HP bar above special enemy
 				local barWidth = enemy.size
 				local barHeight = 6
 				local barX = screenX - barWidth / 2
@@ -710,6 +755,11 @@ function love.draw()
 				love.graphics.rectangle("fill", barX, barY, barWidth, barHeight)
 				love.graphics.setColor(0.8, 0, 1)
 				love.graphics.rectangle("fill", barX, barY, barWidth * (enemy.hp / specialEnemyHp), barHeight)
+			elseif enemy.isElite then
+				love.graphics.setColor(1, 0.5, 0)
+				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+				love.graphics.setColor(1, 1, 0)
+				love.graphics.rectangle("line", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
 			else
 				love.graphics.setColor(1, 0, 0)
 				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
