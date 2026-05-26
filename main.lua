@@ -760,35 +760,6 @@ function love.draw()
 		love.graphics.line(0, screenY, window_width, screenY)
 	end
 
-	love.graphics.setFont(font24)
-	love.graphics.setColor(1, 1, 1)
-	love.graphics.print("HP: " .. player.hp, 10, 10)
-	love.graphics.print("Level: " .. player.level, 10, 30)
-	love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
-	love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
-	love.graphics.print("Kills: " .. totalKills .. "/" .. killsForSpecial, 10, 90)
-	if powerBulletsRemaining > 0 then
-		love.graphics.setColor(0, 1, 0)
-		love.graphics.print("Powered Shots: " .. powerBulletsRemaining, 10, 110)
-	end
-
-	local statsX = window_width - 10
-	love.graphics.setColor(1, 1, 1)
-	local fireRateText = "Fire Rate: " .. fireRateLevel .. "/s"
-	local moveSpeedText = "Move Speed: " .. player.speed
-	local detectRangeText = "Detection: " .. detectionRange
-	local damageText = "Damage: " .. bulletDamage
-	love.graphics.print(fireRateText, statsX - font24:getWidth(fireRateText), 10)
-	love.graphics.print(moveSpeedText, statsX - font24:getWidth(moveSpeedText), 30)
-	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 50)
-	love.graphics.print(damageText, statsX - font24:getWidth(damageText), 70)
-
-	if player.level >= 4 then
-		local boomerangCd = math.max(1, 6 - math.floor(player.level / 4))
-		local boomerangText = "Boomerang: " .. string.format("%.1f", boomerangCooldown) .. "/" .. boomerangCd .. "s"
-		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 90)
-	end
-
 	love.graphics.setColor(1, 1, 1)
 	love.graphics.rectangle(
 		"fill",
@@ -921,6 +892,35 @@ function love.draw()
 		then
 			love.graphics.circle("fill", screenX, screenY, boomerangSize)
 		end
+	end
+
+	love.graphics.setFont(font24)
+	love.graphics.setColor(1, 1, 1)
+	love.graphics.print("HP: " .. player.hp, 10, 10)
+	love.graphics.print("Level: " .. player.level, 10, 30)
+	love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
+	love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
+	love.graphics.print("Kills: " .. totalKills .. "/" .. killsForSpecial, 10, 90)
+	if powerBulletsRemaining > 0 then
+		love.graphics.setColor(0, 1, 0)
+		love.graphics.print("Powered Shots: " .. powerBulletsRemaining, 10, 110)
+	end
+
+	local statsX = window_width - 10
+	love.graphics.setColor(1, 1, 1)
+	local fireRateText = "Fire Rate: " .. fireRateLevel .. "/s"
+	local moveSpeedText = "Move Speed: " .. player.speed
+	local detectRangeText = "Detection: " .. detectionRange
+	local damageText = "Damage: " .. bulletDamage
+	love.graphics.print(fireRateText, statsX - font24:getWidth(fireRateText), 10)
+	love.graphics.print(moveSpeedText, statsX - font24:getWidth(moveSpeedText), 30)
+	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 50)
+	love.graphics.print(damageText, statsX - font24:getWidth(damageText), 70)
+
+	if player.level >= 4 then
+		local boomerangCd = math.max(1, 6 - math.floor(player.level / 4))
+		local boomerangText = "Boomerang: " .. string.format("%.1f", boomerangCooldown) .. "/" .. boomerangCd .. "s"
+		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 90)
 	end
 
 	if gameOver then
