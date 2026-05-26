@@ -141,7 +141,7 @@ function love.load()
 	dashWanted = false
 	dashTimer = 0
 	dashCooldown = 0
-	dashDuration = 0.35
+	dashDuration = 0.05
 	dashRecovery = 0.40
 	dashDirX = 0
 	dashDirY = 0
@@ -332,11 +332,11 @@ end
 
 function spawnSpecialEnemy()
 	specialEnemySpawnCount = specialEnemySpawnCount + 1
-	
+
 	local hpMultiplier = specialEnemyHpScale ^ specialEnemySpawnCount
 	local speedMultiplier = specialEnemySpeedScale ^ specialEnemySpawnCount
 	local xpMultiplier = specialEnemyXpScale ^ specialEnemySpawnCount
-	
+
 	local edge = math.random(4)
 	local margin = 50
 	local x, y
@@ -453,8 +453,8 @@ function love.update(dt)
 	dashWanted = false
 
 	if dashTimer > 0 then
-		player.x = player.x + dashDirX * player.speed * 2 * dt
-		player.y = player.y + dashDirY * player.speed * 2 * dt
+		player.x = player.x + dashDirX * player.speed * 12 * dt
+		player.y = player.y + dashDirY * player.speed * 12 * dt
 		dashTimer = dashTimer - dt
 		if dashTimer <= 0 then
 			dashCooldown = dashRecovery
@@ -809,9 +809,21 @@ function love.draw()
 		then
 			if enemy.isSpecial then
 				love.graphics.setColor(0.6, 0, 0.8)
-				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+				love.graphics.rectangle(
+					"fill",
+					screenX - enemy.size / 2,
+					screenY - enemy.size / 2,
+					enemy.size,
+					enemy.size
+				)
 				love.graphics.setColor(1, 0.8, 0)
-				love.graphics.rectangle("line", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+				love.graphics.rectangle(
+					"line",
+					screenX - enemy.size / 2,
+					screenY - enemy.size / 2,
+					enemy.size,
+					enemy.size
+				)
 				local barWidth = enemy.size
 				local barHeight = 6
 				local barX = screenX - barWidth / 2
@@ -823,12 +835,30 @@ function love.draw()
 				love.graphics.rectangle("fill", barX, barY, barWidth * (enemy.hp / maxHp), barHeight)
 			elseif enemy.isElite then
 				love.graphics.setColor(1, 0.5, 0)
-				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+				love.graphics.rectangle(
+					"fill",
+					screenX - enemy.size / 2,
+					screenY - enemy.size / 2,
+					enemy.size,
+					enemy.size
+				)
 				love.graphics.setColor(1, 1, 0)
-				love.graphics.rectangle("line", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+				love.graphics.rectangle(
+					"line",
+					screenX - enemy.size / 2,
+					screenY - enemy.size / 2,
+					enemy.size,
+					enemy.size
+				)
 			else
 				love.graphics.setColor(1, 0, 0)
-				love.graphics.rectangle("fill", screenX - enemy.size / 2, screenY - enemy.size / 2, enemy.size, enemy.size)
+				love.graphics.rectangle(
+					"fill",
+					screenX - enemy.size / 2,
+					screenY - enemy.size / 2,
+					enemy.size,
+					enemy.size
+				)
 			end
 		end
 	end
