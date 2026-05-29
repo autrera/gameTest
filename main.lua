@@ -939,22 +939,6 @@ function love.draw()
 		love.graphics.print(legendText, (window_width / 2) - legendWidth / 2, 330)
 	end
 
-	if paused then
-		love.graphics.setColor(0, 0, 0, 0.5)
-		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
-
-		love.graphics.setColor(1, 1, 1)
-		love.graphics.setFont(font48)
-		local pauseText = "PAUSED"
-		local textWidth = font48:getWidth(pauseText)
-		love.graphics.print(pauseText, (window_width / 2) - textWidth / 2, window_height / 2 - 24)
-
-		love.graphics.setFont(font24)
-		local hintText = "Press P, ENTER, or START to resume"
-		local hintWidth = font24:getWidth(hintText)
-		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, window_height / 2 + 30)
-	end
-
 	if levelUpActive then
 		love.graphics.setColor(0, 0, 0, 0.7)
 		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
@@ -1006,6 +990,22 @@ function love.draw()
 		local hintWidth = font28:getWidth(hintText)
 		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, boxY + boxHeight + 30)
 	end
+
+	if paused then
+		love.graphics.setColor(0, 0, 0, 0.5)
+		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
+
+		love.graphics.setColor(1, 1, 1)
+		love.graphics.setFont(font48)
+		local pauseText = "PAUSED"
+		local textWidth = font48:getWidth(pauseText)
+		love.graphics.print(pauseText, (window_width / 2) - textWidth / 2, window_height / 2 - 24)
+
+		love.graphics.setFont(font24)
+		local hintText = "Press P, ENTER, or START to resume"
+		local hintWidth = font24:getWidth(hintText)
+		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, window_height / 2 + 30)
+	end
 end
 
 function love.keypressed(key)
@@ -1021,7 +1021,7 @@ function love.keypressed(key)
 		paused = not paused
 	elseif gameOver and key == "return" then
 		resetGame()
-	elseif levelUpActive then
+	elseif levelUpActive and not paused then
 		if key == "1" or key == "kp1" then
 			selectUpgrade(1)
 		elseif key == "2" or key == "kp2" then
@@ -1033,7 +1033,7 @@ function love.keypressed(key)
 end
 
 function love.mousepressed(x, y, button)
-	if levelUpActive then
+	if levelUpActive and not paused then
 		local boxWidth = 280
 		local boxHeight = 150
 		local boxGap = 40
@@ -1056,11 +1056,11 @@ function love.gamepadpressed(j, button)
 		paused = not paused
 	elseif button == "a" and gameOver then
 		resetGame()
-	elseif button == "a" and levelUpActive then
+	elseif button == "a" and levelUpActive and not paused then
 		selectUpgrade(selectedChoice)
 	elseif button == "a" then
 		dashWanted = true
-	elseif levelUpActive then
+	elseif levelUpActive and not paused then
 		if button == "dpleft" or button == "leftshoulder" then
 			selectedChoice = math.max(1, selectedChoice - 1)
 		elseif button == "dpright" or button == "rightshoulder" then
