@@ -105,7 +105,7 @@ function love.load()
 	specialEnemySpeed = 64
 	specialEnemyExperience = 200
 	specialEnemySpawnCount = 0
-	specialEnemyHpScale = 2
+	specialEnemyHpScale = 1.25
 	specialEnemySpeedScale = 1.05
 	specialEnemyXpScale = 2
 
@@ -188,7 +188,7 @@ function love.load()
 	totalKills = 0
 	chests = {}
 	powerBulletsRemaining = 0
-	powerBulletsPerChest = 100
+	powerBulletsPerChest = 50
 
 	resetGame()
 end
@@ -542,7 +542,7 @@ function love.update(dt)
 			bullet.dx = dirX
 			bullet.dy = dirY
 			bullet.isPower = powerBulletsRemaining > 0
-			bullet.damageRemaining = bullet.isPower and (bulletDamage * 2) or bulletDamage
+			bullet.damageRemaining = bullet.isPower and (bulletDamage * 3) or bulletDamage
 			bullet.hitEnemies = {}
 			if powerBulletsRemaining > 0 then
 				powerBulletsRemaining = powerBulletsRemaining - 1
@@ -720,7 +720,7 @@ function love.update(dt)
 			and player.y + halfP > c.y - halfC
 			and player.y - halfP < c.y + halfC
 		then
-			powerBulletsRemaining = powerBulletsRemaining + powerBulletsPerChest
+			powerBulletsRemaining = powerBulletsRemaining + powerBulletsPerChest * specialEnemySpawnCount
 			swapRemove(chests, i)
 		end
 	end
