@@ -140,6 +140,9 @@ function love.load()
 	pauseSelectedOption = 1
 	pauseOptions = { "Continue", "Restart", "Quit" }
 
+	playerMoveDirX = 0
+	playerMoveDirY = 0
+
 	dashWanted = false
 	dashTimer = 0
 	dashCooldown = 0
@@ -244,6 +247,9 @@ function resetGame()
 	paused = false
 	pauseSelectedOption = 1
 
+	playerMoveDirX = 0
+	playerMoveDirY = 0
+
 	dashWanted = false
 	dashTimer = 0
 	dashCooldown = 0
@@ -285,9 +291,36 @@ end
 function spawnEnemies()
 	local maxEnemies = baseMaxEnemies + (player.level - 1) * 20
 	while #enemies < maxEnemies do
-		local edge = math.random(4)
+		local edge
 		local margin = 50
 		local x, y
+
+		local biased = math.random() < 0.75 and (playerMoveDirX ~= 0 or playerMoveDirY ~= 0)
+
+		if biased then
+			-- Pick an edge the player is moving toward, weighted by direction magnitude
+			local absDx = math.abs(playerMoveDirX)
+			local absDy = math.abs(playerMoveDirY)
+			local total = absDx + absDy
+
+			if math.random() < absDx / total then
+				-- Horizontal edge
+				if playerMoveDirX > 0 then
+					edge = 2 -- right
+				else
+					edge = 1 -- left
+				end
+			else
+				-- Vertical edge
+				if playerMoveDirY > 0 then
+					edge = 4 -- bottom
+				else
+					edge = 3 -- top
+				end
+			end
+		else
+			edge = math.random(4)
+		end
 
 		if edge == 1 then
 			x = camera.x - margin
@@ -446,6 +479,11 @@ function love.update(dt)
 		local len = math.sqrt(dx * dx + dy * dy)
 		dx = dx / len
 		dy = dy / len
+	end
+
+	if dx ~= 0 or dy ~= 0 then
+		playerMoveDirX = dx
+		playerMoveDirY = dy
 	end
 
 	if dashWanted and (dx ~= 0 or dy ~= 0) and dashTimer <= 0 and dashCooldown <= 0 then
