@@ -137,6 +137,8 @@ function love.load()
 	levelUpInputDelayDuration = 1.0
 
 	paused = false
+	pauseSelectedOption = 1
+	pauseOptions = { "Continue", "Restart", "Quit" }
 
 	dashWanted = false
 	dashTimer = 0
@@ -240,6 +242,7 @@ function resetGame()
 	levelUpInputDelay = 0
 
 	paused = false
+	pauseSelectedOption = 1
 
 	dashWanted = false
 	dashTimer = 0
@@ -992,19 +995,48 @@ function love.draw()
 	end
 
 	if paused then
-		love.graphics.setColor(0, 0, 0, 0.5)
+		love.graphics.setColor(0, 0, 0, 0.6)
 		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
 
 		love.graphics.setColor(1, 1, 1)
 		love.graphics.setFont(font48)
 		local pauseText = "PAUSED"
 		local textWidth = font48:getWidth(pauseText)
-		love.graphics.print(pauseText, (window_width / 2) - textWidth / 2, window_height / 2 - 24)
+		love.graphics.print(pauseText, (window_width / 2) - textWidth / 2, window_height / 2 - 120)
 
-		love.graphics.setFont(font24)
-		local hintText = "Press P, ENTER, or START to resume"
-		local hintWidth = font24:getWidth(hintText)
-		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, window_height / 2 + 30)
+		local menuStartY = window_height / 2 - 40
+		local menuItemHeight = 50
+		local menuBoxWidth = 260
+		local menuBoxX = (window_width - menuBoxWidth) / 2
+
+		for i, option in ipairs(pauseOptions) do
+			local itemY = menuStartY + (i - 1) * menuItemHeight
+
+			if i == pauseSelectedOption then
+				love.graphics.setColor(0.3, 0.3, 0.6)
+			else
+				love.graphics.setColor(0.15, 0.15, 0.15, 0.9)
+			end
+			love.graphics.rectangle("fill", menuBoxX, itemY, menuBoxWidth, menuItemHeight - 6, 6, 6)
+
+			if i == pauseSelectedOption then
+				love.graphics.setColor(0.6, 0.6, 1)
+			else
+				love.graphics.setColor(0.5, 0.5, 0.5)
+			end
+			love.graphics.rectangle("line", menuBoxX, itemY, menuBoxWidth, menuItemHeight - 6, 6, 6)
+
+			love.graphics.setFont(font28)
+			love.graphics.setColor(1, 1, 1)
+			local optionWidth = font28:getWidth(option)
+			love.graphics.print(option, (window_width - optionWidth) / 2, itemY + (menuItemHeight - 6 - font28:getHeight()) / 2)
+		end
+
+		love.graphics.setFont(font20)
+		love.graphics.setColor(0.6, 0.6, 0.6)
+		local hintText = "Arrows/D-Pad to navigate, Enter/A to select"
+		local hintWidth = font20:getWidth(hintText)
+		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, menuStartY + #pauseOptions * menuItemHeight + 10)
 	end
 end
 
@@ -1015,10 +1047,27 @@ function love.keypressed(key)
 		dashWanted = true
 	elseif key == "r" then
 		resetGame()
-	elseif key == "p" then
-		paused = not paused
-	elseif key == "return" and not gameOver and not levelUpActive then
-		paused = not paused
+	elseif key == "p" and not gameOver and not levelUpActive then
+		if paused then
+			paused = false
+		else
+			paused = true
+			pauseSelectedOption = 1
+		end
+	elseif paused then
+		if key == "up" then
+			pauseSelectedOption = pauseSelectedOption - 1
+			if pauseSelectedOption < 1 then
+				pauseSelectedOption = #pauseOptions
+			end
+		elseif key == "down" then
+			pauseSelectedOption = pauseSelectedOption + 1
+			if pauseSelectedOption > #pauseOptions then
+				pauseSelectedOption = 1
+			end
+		elseif key == "return" then
+			executePauseOption(pauseSelectedOption)
+		end
 	elseif gameOver and key == "return" then
 		resetGame()
 	elseif levelUpActive and not paused then
@@ -1033,7 +1082,23 @@ function love.keypressed(key)
 end
 
 function love.mousepressed(x, y, button)
-	if levelUpActive and not paused then
+	if paused then
+		local menuStartY = window_height / 2 - 40
+		local menuItemHeight = 50
+		local menuBoxWidth = 260
+		local menuBoxX = (window_width - menuBoxWidth) / 2
+
+		for i = 1, #pauseOptions do
+			local itemY = menuStartY + (i - 1) * menuItemHeight
+			if x >= menuBoxX and x <= menuBoxX + menuBoxWidth and y >= itemY and y <= itemY + menuItemHeight - 6 then
+				executePauseOption(i)
+				break
+			end
+		end
+		return
+	end
+
+	if levelUpActive then
 		local boxWidth = 280
 		local boxHeight = 150
 		local boxGap = 40
@@ -1052,20 +1117,51 @@ function love.mousepressed(x, y, button)
 end
 
 function love.gamepadpressed(j, button)
-	if button == "start" then
-		paused = not paused
+	if button == "start" and not gameOver and not levelUpActive then
+		if paused then
+			paused = false
+		else
+			paused = true
+			pauseSelectedOption = 1
+		end
+	elseif paused then
+		if button == "dpup" then
+			pauseSelectedOption = pauseSelectedOption - 1
+			if pauseSelectedOption < 1 then
+				pauseSelectedOption = #pauseOptions
+			end
+		elseif button == "dpdown" then
+			pauseSelectedOption = pauseSelectedOption + 1
+			if pauseSelectedOption > #pauseOptions then
+				pauseSelectedOption = 1
+			end
+		elseif button == "a" then
+			executePauseOption(pauseSelectedOption)
+		end
 	elseif button == "a" and gameOver then
 		resetGame()
-	elseif button == "a" and levelUpActive and not paused then
+	elseif button == "a" and levelUpActive then
 		selectUpgrade(selectedChoice)
 	elseif button == "a" then
 		dashWanted = true
-	elseif levelUpActive and not paused then
+	elseif levelUpActive then
 		if button == "dpleft" or button == "leftshoulder" then
 			selectedChoice = math.max(1, selectedChoice - 1)
 		elseif button == "dpright" or button == "rightshoulder" then
 			selectedChoice = math.min(3, selectedChoice + 1)
 		end
+	end
+end
+
+function executePauseOption(index)
+	local option = pauseOptions[index]
+	if option == "Continue" then
+		paused = false
+	elseif option == "Restart" then
+		paused = false
+		resetGame()
+	elseif option == "Quit" then
+		love.event.quit()
 	end
 end
 
