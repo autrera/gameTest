@@ -1047,7 +1047,7 @@ function love.keypressed(key)
 		dashWanted = true
 	elseif key == "r" then
 		resetGame()
-	elseif key == "p" and not gameOver and not levelUpActive then
+	elseif key == "p" and not gameOver then
 		if paused then
 			paused = false
 		else
@@ -1117,7 +1117,7 @@ function love.mousepressed(x, y, button)
 end
 
 function love.gamepadpressed(j, button)
-	if button == "start" and not gameOver and not levelUpActive then
+	if button == "start" and not gameOver then
 		if paused then
 			paused = false
 		else
