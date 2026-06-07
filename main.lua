@@ -569,26 +569,49 @@ function love.update(dt)
 				dirY = dirY * invLen
 			end
 
-			local bullet
-			if #bulletPool > 0 then
-				bullet = bulletPool[#bulletPool]
-				bulletPool[#bulletPool] = nil
-				bullet.damageRemaining = nil
-				bullet.hitEnemies = nil
+			if powerBulletsRemaining >= 3 then
+				local spreadAngle = math.rad(30)
+				for _, angle in ipairs({ -spreadAngle, 0, spreadAngle }) do
+					local cosA = math.cos(angle)
+					local sinA = math.sin(angle)
+					local bullet
+					if #bulletPool > 0 then
+						bullet = bulletPool[#bulletPool]
+						bulletPool[#bulletPool] = nil
+						bullet.damageRemaining = nil
+						bullet.hitEnemies = nil
+					else
+						bullet = {}
+					end
+					bullet.x = player.x
+					bullet.y = player.y
+					bullet.dx = dirX * cosA - dirY * sinA
+					bullet.dy = dirX * sinA + dirY * cosA
+					bullet.isPower = true
+					bullet.damageRemaining = bulletDamage * 3
+					bullet.hitEnemies = {}
+					table.insert(bullets, bullet)
+				end
+				powerBulletsRemaining = powerBulletsRemaining - 3
 			else
-				bullet = {}
+				local bullet
+				if #bulletPool > 0 then
+					bullet = bulletPool[#bulletPool]
+					bulletPool[#bulletPool] = nil
+					bullet.damageRemaining = nil
+					bullet.hitEnemies = nil
+				else
+					bullet = {}
+				end
+				bullet.x = player.x
+				bullet.y = player.y
+				bullet.dx = dirX
+				bullet.dy = dirY
+				bullet.isPower = false
+				bullet.damageRemaining = bulletDamage
+				bullet.hitEnemies = {}
+				table.insert(bullets, bullet)
 			end
-			bullet.x = player.x
-			bullet.y = player.y
-			bullet.dx = dirX
-			bullet.dy = dirY
-			bullet.isPower = powerBulletsRemaining > 0
-			bullet.damageRemaining = bullet.isPower and (bulletDamage * 3) or bulletDamage
-			bullet.hitEnemies = {}
-			if powerBulletsRemaining > 0 then
-				powerBulletsRemaining = powerBulletsRemaining - 1
-			end
-			table.insert(bullets, bullet)
 			bulletCooldown = bulletFireRate
 		end
 	end
