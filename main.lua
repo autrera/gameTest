@@ -711,16 +711,20 @@ function love.update(dt)
 	boomerangCooldown = boomerangCooldown - dt
 
 	if player.level >= 4 and boomerangCooldown <= 0 then
-		table.insert(boomerangs, {
-			x = player.x,
-			y = player.y,
-			originX = player.x,
-			originY = player.y,
-			angle = 0,
-			radius = 0,
-			hitEnemies = {},
-		})
-		boomerangCooldown = math.max(1, 6 - math.floor(player.level / 4))
+		local boomerangCount = math.floor(player.level / 4)
+		local angleStep = (2 * math.pi) / boomerangCount
+		for i = 0, boomerangCount - 1 do
+			table.insert(boomerangs, {
+				x = player.x,
+				y = player.y,
+				originX = player.x,
+				originY = player.y,
+				angle = i * angleStep,
+				radius = 0,
+				hitEnemies = {},
+			})
+		end
+		boomerangCooldown = 5
 	end
 
 	local boomerangHitRadius = boomerangSize + enemySize / 2
@@ -982,8 +986,8 @@ function love.draw()
 	love.graphics.print(damageText, statsX - font24:getWidth(damageText), 70)
 
 	if player.level >= 4 then
-		local boomerangCd = math.max(1, 6 - math.floor(player.level / 4))
-		local boomerangText = "Boomerang: " .. string.format("%.1f", boomerangCooldown) .. "/" .. boomerangCd .. "s"
+		local boomerangCount = math.floor(player.level / 4)
+		local boomerangText = "Boomerangs: " .. boomerangCount .. " (" .. string.format("%.1f", boomerangCooldown) .. "/5.0s)"
 		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 90)
 	end
 
