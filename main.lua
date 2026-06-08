@@ -721,6 +721,7 @@ function love.update(dt)
 				originY = player.y,
 				angle = i * angleStep,
 				radius = 0,
+				spinAngle = 0,
 				hitEnemies = {},
 			})
 		end
@@ -733,6 +734,7 @@ function love.update(dt)
 	for i = #boomerangs, 1, -1 do
 		local b = boomerangs[i]
 		b.angle = b.angle + boomerangRotationSpeed * dt
+		b.spinAngle = b.spinAngle + 10 * dt
 		b.radius = b.radius + boomerangExpandSpeed * dt
 		b.x = b.originX + math.cos(b.angle) * b.radius
 		b.y = b.originY + math.sin(b.angle) * b.radius
@@ -958,7 +960,13 @@ function love.draw()
 			and screenY > -boomerangSize
 			and screenY < window_height + boomerangSize
 		then
-			love.graphics.circle("fill", screenX, screenY, boomerangSize)
+			local p = {}
+			for j = 0, 2 do
+				local a = b.spinAngle + j * (2 * math.pi / 3)
+				p[#p + 1] = screenX + math.cos(a) * boomerangSize
+				p[#p + 1] = screenY + math.sin(a) * boomerangSize
+			end
+			love.graphics.polygon("fill", p)
 		end
 	end
 
@@ -987,7 +995,11 @@ function love.draw()
 
 	if player.level >= 4 then
 		local boomerangCount = math.floor(player.level / 4)
-		local boomerangText = "Boomerangs: " .. boomerangCount .. " (" .. string.format("%.1f", boomerangCooldown) .. "/5.0s)"
+		local boomerangText = "Boomerangs: "
+			.. boomerangCount
+			.. " ("
+			.. string.format("%.1f", boomerangCooldown)
+			.. "/5.0s)"
 		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 90)
 	end
 
@@ -1094,14 +1106,22 @@ function love.draw()
 			love.graphics.setFont(font28)
 			love.graphics.setColor(1, 1, 1)
 			local optionWidth = font28:getWidth(option)
-			love.graphics.print(option, (window_width - optionWidth) / 2, itemY + (menuItemHeight - 6 - font28:getHeight()) / 2)
+			love.graphics.print(
+				option,
+				(window_width - optionWidth) / 2,
+				itemY + (menuItemHeight - 6 - font28:getHeight()) / 2
+			)
 		end
 
 		love.graphics.setFont(font20)
 		love.graphics.setColor(0.6, 0.6, 0.6)
 		local hintText = "Arrows/D-Pad to navigate, Enter/A to select"
 		local hintWidth = font20:getWidth(hintText)
-		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, menuStartY + #pauseOptions * menuItemHeight + 10)
+		love.graphics.print(
+			hintText,
+			(window_width / 2) - hintWidth / 2,
+			menuStartY + #pauseOptions * menuItemHeight + 10
+		)
 	end
 end
 
