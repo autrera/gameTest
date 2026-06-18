@@ -126,6 +126,8 @@ function love.load()
 	boomerangExpandSpeed = 60
 
 	gameOver = false
+	gameOverSelectedOption = 1
+	gameOverOptions = { "Restart", "Quit" }
 
 	joystick = nil
 	deadzone = 0.2
@@ -269,6 +271,7 @@ function resetGame()
 	spawnEnemies()
 
 	gameOver = false
+	gameOverSelectedOption = 1
 end
 
 function generateLevelUpChoices()
@@ -1013,10 +1016,47 @@ function love.draw()
 		local textWidth = font48:getWidth(gameOverText)
 		love.graphics.print(gameOverText, (window_width / 2) - textWidth / 2, 250)
 
-		love.graphics.setFont(font24)
-		local legendText = "Press ENTER to restart or A in the controller (Escape to quit)"
-		local legendWidth = font24:getWidth(legendText)
-		love.graphics.print(legendText, (window_width / 2) - legendWidth / 2, 330)
+		local menuStartY = 330
+		local menuItemHeight = 50
+		local menuBoxWidth = 260
+		local menuBoxX = (window_width - menuBoxWidth) / 2
+
+		for i, option in ipairs(gameOverOptions) do
+			local itemY = menuStartY + (i - 1) * menuItemHeight
+
+			if i == gameOverSelectedOption then
+				love.graphics.setColor(0.3, 0.3, 0.6)
+			else
+				love.graphics.setColor(0.15, 0.15, 0.15, 0.9)
+			end
+			love.graphics.rectangle("fill", menuBoxX, itemY, menuBoxWidth, menuItemHeight - 6, 6, 6)
+
+			if i == gameOverSelectedOption then
+				love.graphics.setColor(0.6, 0.6, 1)
+			else
+				love.graphics.setColor(0.5, 0.5, 0.5)
+			end
+			love.graphics.rectangle("line", menuBoxX, itemY, menuBoxWidth, menuItemHeight - 6, 6, 6)
+
+			love.graphics.setFont(font28)
+			love.graphics.setColor(1, 1, 1)
+			local optionWidth = font28:getWidth(option)
+			love.graphics.print(
+				option,
+				(window_width - optionWidth) / 2,
+				itemY + (menuItemHeight - 6 - font28:getHeight()) / 2
+			)
+		end
+
+		love.graphics.setFont(font20)
+		love.graphics.setColor(0.6, 0.6, 0.6)
+		local hintText = "Arrows/D-Pad to navigate, Enter/A to select"
+		local hintWidth = font20:getWidth(hintText)
+		love.graphics.print(
+			hintText,
+			(window_width / 2) - hintWidth / 2,
+			menuStartY + #gameOverOptions * menuItemHeight + 10
+		)
 	end
 
 	if levelUpActive then
@@ -1126,19 +1166,17 @@ function love.draw()
 end
 
 function love.keypressed(key)
-	if key == "escape" then
-		love.event.quit()
-	elseif key == "space" and not gameOver and not levelUpActive then
-		dashWanted = true
-	elseif key == "r" then
-		resetGame()
-	elseif key == "p" and not gameOver then
+	if (key == "escape" or key == "p") and not gameOver then
 		if paused then
 			paused = false
 		else
 			paused = true
 			pauseSelectedOption = 1
 		end
+	elseif key == "space" and not gameOver and not levelUpActive then
+		dashWanted = true
+	elseif key == "r" then
+		resetGame()
 	elseif paused then
 		if key == "up" then
 			pauseSelectedOption = pauseSelectedOption - 1
@@ -1153,8 +1191,20 @@ function love.keypressed(key)
 		elseif key == "return" then
 			executePauseOption(pauseSelectedOption)
 		end
-	elseif gameOver and key == "return" then
-		resetGame()
+	elseif gameOver then
+		if key == "up" then
+			gameOverSelectedOption = gameOverSelectedOption - 1
+			if gameOverSelectedOption < 1 then
+				gameOverSelectedOption = #gameOverOptions
+			end
+		elseif key == "down" then
+			gameOverSelectedOption = gameOverSelectedOption + 1
+			if gameOverSelectedOption > #gameOverOptions then
+				gameOverSelectedOption = 1
+			end
+		elseif key == "return" then
+			executeGameOverOption(gameOverSelectedOption)
+		end
 	elseif levelUpActive and not paused then
 		if key == "1" or key == "kp1" then
 			selectUpgrade(1)
@@ -1177,6 +1227,22 @@ function love.mousepressed(x, y, button)
 			local itemY = menuStartY + (i - 1) * menuItemHeight
 			if x >= menuBoxX and x <= menuBoxX + menuBoxWidth and y >= itemY and y <= itemY + menuItemHeight - 6 then
 				executePauseOption(i)
+				break
+			end
+		end
+		return
+	end
+
+	if gameOver then
+		local menuStartY = 330
+		local menuItemHeight = 50
+		local menuBoxWidth = 260
+		local menuBoxX = (window_width - menuBoxWidth) / 2
+
+		for i = 1, #gameOverOptions do
+			local itemY = menuStartY + (i - 1) * menuItemHeight
+			if x >= menuBoxX and x <= menuBoxX + menuBoxWidth and y >= itemY and y <= itemY + menuItemHeight - 6 then
+				executeGameOverOption(i)
 				break
 			end
 		end
@@ -1223,8 +1289,20 @@ function love.gamepadpressed(j, button)
 		elseif button == "a" then
 			executePauseOption(pauseSelectedOption)
 		end
-	elseif button == "a" and gameOver then
-		resetGame()
+	elseif gameOver then
+		if button == "dpup" then
+			gameOverSelectedOption = gameOverSelectedOption - 1
+			if gameOverSelectedOption < 1 then
+				gameOverSelectedOption = #gameOverOptions
+			end
+		elseif button == "dpdown" then
+			gameOverSelectedOption = gameOverSelectedOption + 1
+			if gameOverSelectedOption > #gameOverOptions then
+				gameOverSelectedOption = 1
+			end
+		elseif button == "a" then
+			executeGameOverOption(gameOverSelectedOption)
+		end
 	elseif button == "a" and levelUpActive then
 		selectUpgrade(selectedChoice)
 	elseif button == "a" then
@@ -1244,6 +1322,15 @@ function executePauseOption(index)
 		paused = false
 	elseif option == "Restart" then
 		paused = false
+		resetGame()
+	elseif option == "Quit" then
+		love.event.quit()
+	end
+end
+
+function executeGameOverOption(index)
+	local option = gameOverOptions[index]
+	if option == "Restart" then
 		resetGame()
 	elseif option == "Quit" then
 		love.event.quit()
