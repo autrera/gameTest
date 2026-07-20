@@ -211,7 +211,7 @@ function love.load()
 	totalKills = 0
 	chests = {}
 	powerBulletsRemaining = 0
-	powerBulletsPerChest = 50
+	powerBulletsPerChest = 60
 
 	resetGame()
 end
@@ -1014,8 +1014,22 @@ function love.draw()
 	local moveSpeedEntry = upgradePool[1]
 	local pistolEntry = upgradePool[2]
 	local boomerangEntry = upgradePool[3]
-	local moveSpeedText = "Move Speed: " .. player.speed .. " (" .. moveSpeedEntry.level .. "/" .. moveSpeedEntry.maxLevel .. ")"
-	local pistolText = "Pistol: " .. pistolEntry.level .. "/" .. pistolEntry.maxLevel .. " (dmg " .. bulletDamage .. ", " .. fireRateLevel .. "/s)"
+	local moveSpeedText = "Move Speed: "
+		.. player.speed
+		.. " ("
+		.. moveSpeedEntry.level
+		.. "/"
+		.. moveSpeedEntry.maxLevel
+		.. ")"
+	local pistolText = "Pistol: "
+		.. pistolEntry.level
+		.. "/"
+		.. pistolEntry.maxLevel
+		.. " (dmg "
+		.. bulletDamage
+		.. ", "
+		.. fireRateLevel
+		.. "/s)"
 	local detectRangeText = "Detection: " .. detectionRange
 	local damageText = "Damage: " .. bulletDamage
 	local hpText = "HP: " .. player.hp .. "/" .. player.maxHp
