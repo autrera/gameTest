@@ -138,6 +138,8 @@ function love.load()
 	laserGunTargetY = 0
 	laserGunDirX = 0
 	laserGunDirY = 0
+	laserGunStartX = 0
+	laserGunStartY = 0
 	laserGunDamageBase = 3
 
 	gameOver = false
@@ -281,6 +283,8 @@ function resetGame()
 	laserGunTargetY = 0
 	laserGunDirX = 0
 	laserGunDirY = 0
+	laserGunStartX = 0
+	laserGunStartY = 0
 
 	xpNeededA = 0
 	xpNeededB = 100
@@ -470,10 +474,12 @@ function findClosestEnemy()
 	local closestDistSq = detectionRangeSq
 
 	for _, enemy in ipairs(enemies) do
-		local d = distSq(enemy.x, enemy.y, player.x, player.y)
-		if d < closestDistSq then
-			closestDistSq = d
-			closest = enemy
+		if not enemy.dead then
+			local d = distSq(enemy.x, enemy.y, player.x, player.y)
+			if d < closestDistSq then
+				closestDistSq = d
+				closest = enemy
+			end
 		end
 	end
 
@@ -772,6 +778,9 @@ function love.update(dt)
 			end
 		elseif laserGunState == "charging" then
 			laserGunTimer = laserGunTimer - dt
+			if laserGunTargetEnemy and laserGunTargetEnemy.dead then
+				laserGunTargetEnemy = findClosestEnemy()
+			end
 			if laserGunTargetEnemy and not laserGunTargetEnemy.dead then
 				laserGunTargetX = laserGunTargetEnemy.x
 				laserGunTargetY = laserGunTargetEnemy.y
@@ -791,6 +800,9 @@ function love.update(dt)
 			if laserGunTimer <= 0 then
 				laserGunState = "firing"
 				laserGunTimer = 0.1
+
+				laserGunStartX = player.x
+				laserGunStartY = player.y
 
 				local p1x = player.x
 				local p1y = player.y
@@ -1085,10 +1097,19 @@ function love.draw()
 		if laserGunState == "charging" or laserGunState == "firing" then
 			local laserLength = math.sqrt(window_width * window_width + window_height * window_height)
 
-			local screenX1 = player.x - camera.x
-			local screenY1 = player.y - camera.y
-			local screenX2 = (player.x + laserGunDirX * laserLength) - camera.x
-			local screenY2 = (player.y + laserGunDirY * laserLength) - camera.y
+			local startX, startY
+			if laserGunState == "firing" then
+				startX = laserGunStartX
+				startY = laserGunStartY
+			else
+				startX = player.x
+				startY = player.y
+			end
+
+			local screenX1 = startX - camera.x
+			local screenY1 = startY - camera.y
+			local screenX2 = (startX + laserGunDirX * laserLength) - camera.x
+			local screenY2 = (startY + laserGunDirY * laserLength) - camera.y
 
 			if laserGunState == "charging" then
 				love.graphics.setColor(1, 0, 0, 0.5)
