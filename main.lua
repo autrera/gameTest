@@ -74,11 +74,15 @@ function love.load()
 		size = 32,
 		speed = 32,
 		hp = 100,
+		maxHp = 100,
 		damageCooldown = 0,
 		damageInterval = 1,
 		experience = 0,
 		level = 1,
 	}
+
+	boomerangsUnlocked = false
+	boomerangLevel = 0
 
 	camera = {
 		x = 0,
@@ -158,35 +162,47 @@ function love.load()
 
 	upgradePool = {
 		{
-			name = "Fire Rate",
-			description = "+1 shot per second",
-			apply = function()
-				fireRateLevel = fireRateLevel + 1
-				bulletFireRate = 1 / fireRateLevel
-			end,
-		},
-		{
 			name = "Move Speed",
 			description = "+16 move speed",
+			level = 0,
+			maxLevel = 5,
 			apply = function()
 				player.speed = player.speed + 16
 			end,
 		},
 		{
-			name = "Detection Range",
-			description = "+100 gun range",
+			name = "Pistol",
+			description = "+1 damage, +1 shot/s",
+			level = 0,
+			maxLevel = 5,
 			apply = function()
-				detectionRange = detectionRange + 100
-				detectionRangeSq = detectionRange * detectionRange
+				bulletDamage = bulletDamage + 1
+				fireRateLevel = fireRateLevel + 1
+				bulletFireRate = 1 / fireRateLevel
 			end,
 		},
 		{
-			name = "Bullet Damage",
-			description = "+1 bullet damage",
+			name = "Boomerang",
+			description = "Unlock / +1 boomerang",
+			level = 0,
+			maxLevel = 5,
 			apply = function()
-				bulletDamage = bulletDamage + 1
+				if not boomerangsUnlocked then
+					boomerangsUnlocked = true
+				else
+					boomerangLevel = boomerangLevel + 1
+				end
 			end,
 		},
+	}
+
+	healthUpgrade = {
+		name = "Vitality",
+		description = "+20 max HP",
+		apply = function()
+			player.maxHp = player.maxHp + 20
+			player.hp = math.min(player.maxHp, player.hp + 20)
+		end,
 	}
 
 	bulletPool = {}
@@ -216,6 +232,7 @@ function resetGame()
 	player.x = 0
 	player.y = 0
 	player.hp = 100
+	player.maxHp = 100
 	player.damageCooldown = 0
 	player.speed = 32
 	player.experience = 0
@@ -227,6 +244,9 @@ function resetGame()
 	detectionRangeSq = detectionRange * detectionRange
 	fireRateLevel = 3
 	bulletFireRate = 1 / 3
+
+	boomerangsUnlocked = false
+	boomerangLevel = 0
 
 	xpNeededA = 0
 	xpNeededB = 100
@@ -278,16 +298,19 @@ function generateLevelUpChoices()
 	levelUpChoices = {}
 	local available = {}
 	for i, v in ipairs(upgradePool) do
-		available[i] = v
+		if v.level < v.maxLevel then
+			table.insert(available, v)
+		end
 	end
 
 	for i = 1, 3 do
 		if #available == 0 then
-			break
+			table.insert(levelUpChoices, healthUpgrade)
+		else
+			local idx = math.random(1, #available)
+			table.insert(levelUpChoices, available[idx])
+			table.remove(available, idx)
 		end
-		local idx = math.random(1, #available)
-		table.insert(levelUpChoices, available[idx])
-		table.remove(available, idx)
 	end
 end
 
@@ -555,6 +578,7 @@ function love.update(dt)
 	end
 
 	if player.hp <= 0 then
+		player.hp = 0
 		gameOver = true
 	end
 
@@ -713,8 +737,8 @@ function love.update(dt)
 
 	boomerangCooldown = boomerangCooldown - dt
 
-	if player.level >= 4 and boomerangCooldown <= 0 then
-		local boomerangCount = math.floor(player.level / 4)
+	if boomerangsUnlocked and boomerangCooldown <= 0 then
+		local boomerangCount = 1 + boomerangLevel
 		local angleStep = (2 * math.pi) / boomerangCount
 		for i = 0, boomerangCount - 1 do
 			table.insert(boomerangs, {
@@ -805,7 +829,7 @@ function love.update(dt)
 		xpNeededA = _xpNeededB
 		player.experience = player.experience - xpNeeded
 		player.level = player.level + 1
-		player.hp = math.min(100, player.hp + 5)
+		player.hp = math.min(player.maxHp, player.hp + 5)
 		generateLevelUpChoices()
 		selectedChoice = 1
 		levelUpActive = true
@@ -987,23 +1011,32 @@ function love.draw()
 
 	local statsX = window_width - 10
 	love.graphics.setColor(1, 1, 1)
-	local fireRateText = "Fire Rate: " .. fireRateLevel .. "/s"
-	local moveSpeedText = "Move Speed: " .. player.speed
+	local moveSpeedEntry = upgradePool[1]
+	local pistolEntry = upgradePool[2]
+	local boomerangEntry = upgradePool[3]
+	local moveSpeedText = "Move Speed: " .. player.speed .. " (" .. moveSpeedEntry.level .. "/" .. moveSpeedEntry.maxLevel .. ")"
+	local pistolText = "Pistol: " .. pistolEntry.level .. "/" .. pistolEntry.maxLevel .. " (dmg " .. bulletDamage .. ", " .. fireRateLevel .. "/s)"
 	local detectRangeText = "Detection: " .. detectionRange
 	local damageText = "Damage: " .. bulletDamage
-	love.graphics.print(fireRateText, statsX - font24:getWidth(fireRateText), 10)
-	love.graphics.print(moveSpeedText, statsX - font24:getWidth(moveSpeedText), 30)
+	local hpText = "HP: " .. player.hp .. "/" .. player.maxHp
+	love.graphics.print(moveSpeedText, statsX - font24:getWidth(moveSpeedText), 10)
+	love.graphics.print(pistolText, statsX - font24:getWidth(pistolText), 30)
 	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 50)
 	love.graphics.print(damageText, statsX - font24:getWidth(damageText), 70)
+	love.graphics.print(hpText, statsX - font24:getWidth(hpText), 90)
 
-	if player.level >= 4 then
-		local boomerangCount = math.floor(player.level / 4)
+	if boomerangsUnlocked then
+		local boomerangCount = 1 + boomerangLevel
 		local boomerangText = "Boomerangs: "
 			.. boomerangCount
 			.. " ("
+			.. boomerangEntry.level
+			.. "/"
+			.. boomerangEntry.maxLevel
+			.. ", "
 			.. string.format("%.1f", boomerangCooldown)
 			.. "/5.0s)"
-		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 90)
+		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 110)
 	end
 
 	if gameOver then
@@ -1342,7 +1375,11 @@ function selectUpgrade(index)
 		return
 	end
 	if index >= 1 and index <= #levelUpChoices then
-		levelUpChoices[index].apply()
+		local choice = levelUpChoices[index]
+		choice.apply()
+		if choice.level ~= nil then
+			choice.level = choice.level + 1
+		end
 		levelUpActive = false
 		levelUpChoices = {}
 	end
