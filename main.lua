@@ -129,6 +129,17 @@ function love.load()
 	boomerangRotationSpeed = 6
 	boomerangExpandSpeed = 60
 
+	laserGunUnlocked = false
+	laserGunLevel = 0
+	laserGunState = "idle"
+	laserGunTimer = 0
+	laserGunTargetEnemy = nil
+	laserGunTargetX = 0
+	laserGunTargetY = 0
+	laserGunDirX = 0
+	laserGunDirY = 0
+	laserGunDamageBase = 3
+
 	gameOver = false
 	gameOverSelectedOption = 1
 	gameOverOptions = { "Restart", "Quit" }
@@ -194,6 +205,19 @@ function love.load()
 				end
 			end,
 		},
+		{
+			name = "Laser Gun",
+			description = "Unlock / +1 damage",
+			level = 0,
+			maxLevel = 5,
+			apply = function()
+				if not laserGunUnlocked then
+					laserGunUnlocked = true
+				else
+					laserGunLevel = laserGunLevel + 1
+				end
+			end,
+		},
 	}
 
 	healthUpgrade = {
@@ -247,6 +271,16 @@ function resetGame()
 
 	boomerangsUnlocked = false
 	boomerangLevel = 0
+
+	laserGunUnlocked = false
+	laserGunLevel = 0
+	laserGunState = "idle"
+	laserGunTimer = 0
+	laserGunTargetEnemy = nil
+	laserGunTargetX = 0
+	laserGunTargetY = 0
+	laserGunDirX = 0
+	laserGunDirY = 0
 
 	xpNeededA = 0
 	xpNeededB = 100
@@ -444,6 +478,31 @@ function findClosestEnemy()
 	end
 
 	return closest
+end
+
+function killEnemy(enemy)
+	enemy.dead = true
+	local xpGain = enemy.experience
+	if not xpGain then
+		if enemy.isSpecial then
+			xpGain = specialEnemyExperience
+		elseif enemy.isElite then
+			xpGain = eliteEnemyExperience
+		else
+			xpGain = enemyExperience
+		end
+	end
+	player.experience = player.experience + xpGain
+	if enemy.isSpecial then
+		table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
+	else
+		totalKills = totalKills + 1
+		if totalKills >= killsForSpecial then
+			totalKills = totalKills - killsForSpecial
+			killsForSpecial = math.floor(killsForSpecial * killsForSpecialScale)
+			spawnSpecialEnemy()
+		end
+	end
 end
 
 function love.update(dt)
@@ -683,28 +742,7 @@ function love.update(dt)
 					bullet.damageRemaining = bullet.damageRemaining - damageToDeal
 
 					if enemy.hp <= 0 then
-						enemy.dead = true
-						local xpGain = enemy.experience
-						if not xpGain then
-							if enemy.isSpecial then
-								xpGain = specialEnemyExperience
-							elseif enemy.isElite then
-								xpGain = eliteEnemyExperience
-							else
-								xpGain = enemyExperience
-							end
-						end
-						player.experience = player.experience + xpGain
-						if enemy.isSpecial then
-							table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
-						else
-							totalKills = totalKills + 1
-							if totalKills >= killsForSpecial then
-								totalKills = totalKills - killsForSpecial
-								killsForSpecial = math.floor(killsForSpecial * killsForSpecialScale)
-								spawnSpecialEnemy()
-							end
-						end
+						killEnemy(enemy)
 					end
 
 					if bullet.damageRemaining <= 0 then
@@ -721,6 +759,73 @@ function love.update(dt)
 				table.insert(bulletPool, bullet)
 			end
 			swapRemove(bullets, i)
+		end
+	end
+
+	if laserGunUnlocked then
+		if laserGunState == "idle" then
+			local closest = findClosestEnemy()
+			if closest then
+				laserGunTargetEnemy = closest
+				laserGunState = "charging"
+				laserGunTimer = 1.0
+			end
+		elseif laserGunState == "charging" then
+			laserGunTimer = laserGunTimer - dt
+			if laserGunTargetEnemy and not laserGunTargetEnemy.dead then
+				laserGunTargetX = laserGunTargetEnemy.x
+				laserGunTargetY = laserGunTargetEnemy.y
+			end
+
+			local dx = laserGunTargetX - player.x
+			local dy = laserGunTargetY - player.y
+			local len = math.sqrt(dx * dx + dy * dy)
+			if len == 0 then
+				len = 1
+				dx = 1
+				dy = 0
+			end
+			laserGunDirX = dx / len
+			laserGunDirY = dy / len
+
+			if laserGunTimer <= 0 then
+				laserGunState = "firing"
+				laserGunTimer = 0.1
+
+				local p1x = player.x
+				local p1y = player.y
+				local damage = laserGunDamageBase + laserGunLevel
+
+				for _, enemy in ipairs(enemies) do
+					local vX = enemy.x - p1x
+					local vY = enemy.y - p1y
+					local t = vX * laserGunDirX + vY * laserGunDirY
+					if t > 0 then
+						local projX = p1x + t * laserGunDirX
+						local projY = p1y + t * laserGunDirY
+
+						local distSqToLine = distSq(enemy.x, enemy.y, projX, projY)
+						local hitRadius = enemy.size / 2 + 30
+						if distSqToLine <= hitRadius * hitRadius then
+							enemy.hp = enemy.hp - damage
+							if enemy.hp <= 0 and not enemy.dead then
+								killEnemy(enemy)
+							end
+						end
+					end
+				end
+			end
+		elseif laserGunState == "firing" then
+			laserGunTimer = laserGunTimer - dt
+			if laserGunTimer <= 0 then
+				laserGunState = "cooldown"
+				laserGunTimer = 1.0
+			end
+		elseif laserGunState == "cooldown" then
+			laserGunTimer = laserGunTimer - dt
+			if laserGunTimer <= 0 then
+				laserGunState = "idle"
+			end
 		end
 	end
 
@@ -773,28 +878,7 @@ function love.update(dt)
 					enemy.hp = enemy.hp - 1
 					b.hitEnemies[enemy] = true
 					if enemy.hp <= 0 then
-						enemy.dead = true
-						local xpGain = enemy.experience
-						if not xpGain then
-							if enemy.isSpecial then
-								xpGain = specialEnemyExperience
-							elseif enemy.isElite then
-								xpGain = eliteEnemyExperience
-							else
-								xpGain = enemyExperience
-							end
-						end
-						player.experience = player.experience + xpGain
-						if enemy.isSpecial then
-							table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
-						else
-							totalKills = totalKills + 1
-							if totalKills >= killsForSpecial then
-								totalKills = totalKills - killsForSpecial
-								killsForSpecial = math.floor(killsForSpecial * killsForSpecialScale)
-								spawnSpecialEnemy()
-							end
-						end
+						killEnemy(enemy)
 					end
 				end
 			end
@@ -997,6 +1081,28 @@ function love.draw()
 		end
 	end
 
+	if laserGunUnlocked then
+		if laserGunState == "charging" or laserGunState == "firing" then
+			local laserLength = math.sqrt(window_width * window_width + window_height * window_height)
+
+			local screenX1 = player.x - camera.x
+			local screenY1 = player.y - camera.y
+			local screenX2 = (player.x + laserGunDirX * laserLength) - camera.x
+			local screenY2 = (player.y + laserGunDirY * laserLength) - camera.y
+
+			if laserGunState == "charging" then
+				love.graphics.setColor(1, 0, 0, 0.5)
+				love.graphics.setLineWidth(1)
+			else
+				love.graphics.setColor(1, 0, 0, 1)
+				love.graphics.setLineWidth(30)
+			end
+
+			love.graphics.line(screenX1, screenY1, screenX2, screenY2)
+			love.graphics.setLineWidth(1)
+		end
+	end
+
 	love.graphics.setFont(font24)
 	love.graphics.setColor(1, 1, 1)
 	love.graphics.print("HP: " .. player.hp, 10, 10)
@@ -1051,6 +1157,18 @@ function love.draw()
 			.. string.format("%.1f", boomerangCooldown)
 			.. "/5.0s)"
 		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 110)
+	end
+
+	if laserGunUnlocked then
+		local laserEntry = upgradePool[4]
+		local laserText = "Laser: "
+			.. laserEntry.level
+			.. "/"
+			.. laserEntry.maxLevel
+			.. " (dmg "
+			.. (laserGunDamageBase + laserGunLevel)
+			.. ")"
+		love.graphics.print(laserText, statsX - font24:getWidth(laserText), 130)
 	end
 
 	if gameOver then
