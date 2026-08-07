@@ -133,9 +133,9 @@ function love.load()
 	missileLevel = 0
 	missiles = {}
 	missileCooldown = 0
-	missileSpawnInterval = 2.5
+	missileSpawnInterval = 3.0
 	missileSpreadTime = 1.0
-	missileSpreadSpeed = 160
+	missileSpreadSpeed = 45
 	missileAcceleration = 500
 	missileSize = 5
 	missileExplosionRadius = 45
@@ -972,6 +972,7 @@ function love.update(dt)
 				vx = math.cos(angle) * missileSpreadSpeed,
 				vy = math.sin(angle) * missileSpreadSpeed,
 				age = 0,
+				targetAcquired = false,
 			})
 		end
 		missileCooldown = missileSpawnInterval
@@ -984,7 +985,7 @@ function love.update(dt)
 		local m = missiles[i]
 		m.age = m.age + dt
 
-		if m.age >= missileSpreadTime then
+		if m.age >= missileSpreadTime and not m.targetAcquired then
 			local closest = nil
 			local closestDistSq = math.huge
 			for _, enemy in ipairs(enemies) do
@@ -996,15 +997,23 @@ function love.update(dt)
 					end
 				end
 			end
+			m.targetAcquired = true
+			m.dirX = 0
+			m.dirY = 0
 			if closest then
-				local dirX = closest.x - m.x
-				local dirY = closest.y - m.y
-				local len = math.sqrt(dirX * dirX + dirY * dirY)
+				local dx = closest.x - m.x
+				local dy = closest.y - m.y
+				local len = math.sqrt(dx * dx + dy * dy)
 				if len > 0 then
-					m.vx = m.vx + (dirX / len) * missileAcceleration * dt
-					m.vy = m.vy + (dirY / len) * missileAcceleration * dt
+					m.dirX = dx / len
+					m.dirY = dy / len
 				end
 			end
+		end
+
+		if m.dirX and m.dirY then
+			m.vx = m.vx + m.dirX * missileAcceleration * dt
+			m.vy = m.vy + m.dirY * missileAcceleration * dt
 		end
 
 		m.x = m.x + m.vx * dt
@@ -1023,8 +1032,13 @@ function love.update(dt)
 			explodeMissile(m.x, m.y)
 			swapRemove(missiles, i)
 		else
+			local screenX = m.x - camera.x
+			local screenY = m.y - camera.y
 			local distFromPlayerSq = (m.x - player.x) ^ 2 + (m.y - player.y) ^ 2
-			if m.age > missileMaxAge or distFromPlayerSq > missileMaxRangeSq then
+			if m.age > missileMaxAge
+				or distFromPlayerSq > missileMaxRangeSq
+				or screenX < -50 or screenX > window_width + 50
+				or screenY < -50 or screenY > window_height + 50 then
 				swapRemove(missiles, i)
 			end
 		end
@@ -1357,7 +1371,7 @@ function love.draw()
 			.. (10 * missileLevel)
 			.. ", "
 			.. string.format("%.1f", missileCooldown)
-			.. "/2.5s)"
+			.. "/3.0s)"
 		love.graphics.print(missileText, statsX - font24:getWidth(missileText), 150)
 	end
 
