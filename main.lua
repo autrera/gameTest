@@ -270,8 +270,6 @@ function love.load()
 
 	totalKills = 0
 	chests = {}
-	powerBulletsRemaining = 0
-	powerBulletsPerChest = 60
 
 	resetGame()
 end
@@ -367,7 +365,6 @@ function resetGame()
 
 	totalKills = 0
 	chests = {}
-	powerBulletsRemaining = 0
 	specialEnemySpawnCount = 0
 	killsForSpecial = 200
 
@@ -747,49 +744,22 @@ function love.update(dt)
 				dirY = dirY * invLen
 			end
 
-			if powerBulletsRemaining >= 3 then
-				local spreadAngle = math.rad(30)
-				for _, angle in ipairs({ -spreadAngle, 0, spreadAngle }) do
-					local cosA = math.cos(angle)
-					local sinA = math.sin(angle)
-					local bullet
-					if #bulletPool > 0 then
-						bullet = bulletPool[#bulletPool]
-						bulletPool[#bulletPool] = nil
-						bullet.damageRemaining = nil
-						bullet.hitEnemies = nil
-					else
-						bullet = {}
-					end
-					bullet.x = player.x
-					bullet.y = player.y
-					bullet.dx = dirX * cosA - dirY * sinA
-					bullet.dy = dirX * sinA + dirY * cosA
-					bullet.isPower = true
-					bullet.damageRemaining = bulletDamage * 3
-					bullet.hitEnemies = {}
-					table.insert(bullets, bullet)
-				end
-				powerBulletsRemaining = powerBulletsRemaining - 3
+			local bullet
+			if #bulletPool > 0 then
+				bullet = bulletPool[#bulletPool]
+				bulletPool[#bulletPool] = nil
+				bullet.damageRemaining = nil
+				bullet.hitEnemies = nil
 			else
-				local bullet
-				if #bulletPool > 0 then
-					bullet = bulletPool[#bulletPool]
-					bulletPool[#bulletPool] = nil
-					bullet.damageRemaining = nil
-					bullet.hitEnemies = nil
-				else
-					bullet = {}
-				end
-				bullet.x = player.x
-				bullet.y = player.y
-				bullet.dx = dirX
-				bullet.dy = dirY
-				bullet.isPower = false
-				bullet.damageRemaining = bulletDamage
-				bullet.hitEnemies = {}
-				table.insert(bullets, bullet)
+				bullet = {}
 			end
+			bullet.x = player.x
+			bullet.y = player.y
+			bullet.dx = dirX
+			bullet.dy = dirY
+			bullet.damageRemaining = bulletDamage
+			bullet.hitEnemies = {}
+			table.insert(bullets, bullet)
 			bulletCooldown = bulletFireRate
 		end
 	end
@@ -1097,8 +1067,12 @@ function love.update(dt)
 			and player.y + halfP > c.y - halfC
 			and player.y - halfP < c.y + halfC
 		then
-			powerBulletsRemaining = powerBulletsRemaining + powerBulletsPerChest * specialEnemySpawnCount
 			swapRemove(chests, i)
+			generateLevelUpChoices()
+			selectedChoice = 1
+			levelUpActive = true
+			levelUpInputDelay = levelUpInputDelayDuration
+			break
 		end
 	end
 
@@ -1250,13 +1224,8 @@ function love.draw()
 			and screenY > -bulletSize
 			and screenY < window_height + bulletSize
 		then
-			if bullet.isPower then
-				love.graphics.setColor(0, 1, 0)
-				love.graphics.circle("fill", screenX, screenY, bulletSize * 3)
-			else
-				love.graphics.setColor(0.5, 0.5, 0.5)
-				love.graphics.circle("fill", screenX, screenY, bulletSize)
-			end
+			love.graphics.setColor(0.5, 0.5, 0.5)
+			love.graphics.circle("fill", screenX, screenY, bulletSize)
 		end
 	end
 
@@ -1345,10 +1314,6 @@ function love.draw()
 	love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
 	love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
 	love.graphics.print("Kills: " .. totalKills .. "/" .. killsForSpecial, 10, 90)
-	if powerBulletsRemaining > 0 then
-		love.graphics.setColor(0, 1, 0)
-		love.graphics.print("Powered Shots: " .. powerBulletsRemaining, 10, 110)
-	end
 
 	love.graphics.setFont(font24)
 	love.graphics.setColor(1, 1, 1)
