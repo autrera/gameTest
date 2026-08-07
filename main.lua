@@ -359,6 +359,15 @@ function resetGame()
 	gameOverSelectedOption = 1
 end
 
+function getUpgradeByName(name)
+	for i, v in ipairs(upgradePool) do
+		if v.name == name then
+			return v
+		end
+	end
+	return nil
+end
+
 function generateLevelUpChoices()
 	levelUpChoices = {}
 	local available = {}
@@ -1293,8 +1302,8 @@ function love.draw()
 
 	local statsX = window_width - 10
 	love.graphics.setColor(1, 1, 1)
-	local pistolEntry = upgradePool[1]
-	local boomerangEntry = upgradePool[2]
+	local pistolEntry = getUpgradeByName("Pistol")
+	local boomerangEntry = getUpgradeByName("Boomerang")
 	local pistolText = "Pistol: "
 		.. pistolEntry.level
 		.. "/"
@@ -1327,7 +1336,7 @@ function love.draw()
 	end
 
 	if laserGunUnlocked then
-		local laserEntry = upgradePool[3]
+		local laserEntry = getUpgradeByName("Laser Gun")
 		local laserText = "Laser: "
 			.. laserEntry.level
 			.. "/"
@@ -1339,7 +1348,7 @@ function love.draw()
 	end
 
 	if missilesUnlocked then
-		local missileEntry = upgradePool[5]
+		local missileEntry = getUpgradeByName("Missiles")
 		local missileText = "Missiles: "
 			.. missileEntry.level
 			.. "/"
