@@ -13,6 +13,17 @@ local function swapRemove(t, i)
 	t[n] = nil
 end
 
+local function formatPlayTime(seconds)
+	if seconds >= 3600 then
+		local h = math.floor(seconds / 3600)
+		local m = math.floor((seconds % 3600) / 60)
+		local s = math.floor(seconds % 60)
+		return string.format("%02d:%02d:%02d", h, m, s)
+	else
+		return string.format("%02d:%02d", math.floor(seconds / 60), math.floor(seconds % 60))
+	end
+end
+
 local GRID_CELL = 128
 local grid = {}
 
@@ -157,6 +168,8 @@ function love.load()
 	laserGunStartX = 0
 	laserGunStartY = 0
 	laserGunDamageBase = 3
+
+	sessionTimer = 0
 
 	gameOver = false
 	gameOverSelectedOption = 1
@@ -360,6 +373,7 @@ function resetGame()
 
 	spawnEnemies()
 
+	sessionTimer = 0
 	gameOver = false
 	gameOverSelectedOption = 1
 end
@@ -589,6 +603,8 @@ function love.update(dt)
 	if gameOver or levelUpActive or paused then
 		return
 	end
+
+	sessionTimer = sessionTimer + dt
 
 	local dx = 0
 	local dy = 0
@@ -1333,6 +1349,10 @@ function love.draw()
 		love.graphics.setColor(0, 1, 0)
 		love.graphics.print("Powered Shots: " .. powerBulletsRemaining, 10, 110)
 	end
+
+	love.graphics.setFont(font24)
+	love.graphics.setColor(1, 1, 1)
+	love.graphics.print("Time: " .. formatPlayTime(sessionTimer), 10, window_height - 35)
 
 	local statsX = window_width - 10
 	love.graphics.setColor(1, 1, 1)
