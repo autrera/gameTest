@@ -175,15 +175,6 @@ function love.load()
 
 	upgradePool = {
 		{
-			name = "Move Speed",
-			description = "+16 move speed",
-			level = 0,
-			maxLevel = 5,
-			apply = function()
-				player.speed = player.speed + 16
-			end,
-		},
-		{
 			name = "Pistol",
 			description = "+1 damage, +1 shot/s",
 			level = 0,
@@ -500,7 +491,7 @@ function killEnemy(enemy)
 	end
 	player.experience = player.experience + xpGain
 	if enemy.isSpecial then
-		table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size })
+		table.insert(chests, { x = enemy.x, y = enemy.y, size = player.size, timer = 1.0 })
 	else
 		totalKills = totalKills + 1
 		if totalKills >= killsForSpecial then
@@ -905,10 +896,12 @@ function love.update(dt)
 
 	for i = #chests, 1, -1 do
 		local c = chests[i]
+		c.timer = c.timer - dt
 		local halfC = c.size / 2
 		local halfP = player.size / 2
 		if
-			player.x + halfP > c.x - halfC
+			c.timer <= 0
+			and player.x + halfP > c.x - halfC
 			and player.x - halfP < c.x + halfC
 			and player.y + halfP > c.y - halfC
 			and player.y - halfP < c.y + halfC
@@ -1138,16 +1131,8 @@ function love.draw()
 
 	local statsX = window_width - 10
 	love.graphics.setColor(1, 1, 1)
-	local moveSpeedEntry = upgradePool[1]
-	local pistolEntry = upgradePool[2]
-	local boomerangEntry = upgradePool[3]
-	local moveSpeedText = "Move Speed: "
-		.. player.speed
-		.. " ("
-		.. moveSpeedEntry.level
-		.. "/"
-		.. moveSpeedEntry.maxLevel
-		.. ")"
+	local pistolEntry = upgradePool[1]
+	local boomerangEntry = upgradePool[2]
 	local pistolText = "Pistol: "
 		.. pistolEntry.level
 		.. "/"
@@ -1160,11 +1145,10 @@ function love.draw()
 	local detectRangeText = "Detection: " .. detectionRange
 	local damageText = "Damage: " .. bulletDamage
 	local hpText = "HP: " .. player.hp .. "/" .. player.maxHp
-	love.graphics.print(moveSpeedText, statsX - font24:getWidth(moveSpeedText), 10)
-	love.graphics.print(pistolText, statsX - font24:getWidth(pistolText), 30)
-	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 50)
-	love.graphics.print(damageText, statsX - font24:getWidth(damageText), 70)
-	love.graphics.print(hpText, statsX - font24:getWidth(hpText), 90)
+	love.graphics.print(pistolText, statsX - font24:getWidth(pistolText), 10)
+	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 30)
+	love.graphics.print(damageText, statsX - font24:getWidth(damageText), 50)
+	love.graphics.print(hpText, statsX - font24:getWidth(hpText), 70)
 
 	if boomerangsUnlocked then
 		local boomerangCount = 1 + boomerangLevel
@@ -1177,11 +1161,11 @@ function love.draw()
 			.. ", "
 			.. string.format("%.1f", boomerangCooldown)
 			.. "/5.0s)"
-		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 110)
+		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 90)
 	end
 
 	if laserGunUnlocked then
-		local laserEntry = upgradePool[4]
+		local laserEntry = upgradePool[3]
 		local laserText = "Laser: "
 			.. laserEntry.level
 			.. "/"
@@ -1189,7 +1173,7 @@ function love.draw()
 			.. " (dmg "
 			.. (laserGunDamageBase + laserGunLevel)
 			.. ")"
-		love.graphics.print(laserText, statsX - font24:getWidth(laserText), 130)
+		love.graphics.print(laserText, statsX - font24:getWidth(laserText), 110)
 	end
 
 	if gameOver then
