@@ -1048,10 +1048,14 @@ function love.update(dt)
 			local screenX = m.x - camera.x
 			local screenY = m.y - camera.y
 			local distFromPlayerSq = (m.x - player.x) ^ 2 + (m.y - player.y) ^ 2
-			if m.age > missileMaxAge
+			if
+				m.age > missileMaxAge
 				or distFromPlayerSq > missileMaxRangeSq
-				or screenX < -50 or screenX > window_width + 50
-				or screenY < -50 or screenY > window_height + 50 then
+				or screenX < -50
+				or screenX > window_width + 50
+				or screenY < -50
+				or screenY > window_height + 50
+			then
 				swapRemove(missiles, i)
 			end
 		end
@@ -1083,6 +1087,9 @@ function love.update(dt)
 	end
 
 	xpNeeded = xpNeededA + xpNeededB
+	if xpNeeded > 50000 then
+		xpNeeded = 50000
+	end
 	if player.experience >= xpNeeded then
 		_xpNeededB = xpNeededB
 		xpNeededB = xpNeededA + xpNeededB
