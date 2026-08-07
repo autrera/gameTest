@@ -145,13 +145,13 @@ function love.load()
 	missiles = {}
 	missileCooldown = 0
 	missileSpawnInterval = 3.0
-	missileSpreadTime = 1.0
+	missileSpreadTime = 0.75
 	missileSpreadSpeed = 45
 	missileAcceleration = 500
-	missileSize = 5
-	missileExplosionRadius = 45
+	missileSize = 6
+	missileExplosionRadius = 40
 	missileMaxAge = 6
-	missileMaxRange = 600
+	missileMaxRange = 800
 	missileMaxRangeSq = missileMaxRange * missileMaxRange
 
 	explosions = {}
@@ -992,7 +992,7 @@ function love.update(dt)
 	missileCooldown = missileCooldown - dt
 
 	if missilesUnlocked and missileCooldown <= 0 then
-		local count = math.min(4, 1 + missileLevel)
+		local count = 3 * missileLevel
 		for i = 1, count do
 			local angle = math.random() * 2 * math.pi
 			table.insert(missiles, {
