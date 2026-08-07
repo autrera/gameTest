@@ -129,6 +129,22 @@ function love.load()
 	boomerangRotationSpeed = 6
 	boomerangExpandSpeed = 60
 
+	missilesUnlocked = false
+	missileLevel = 0
+	missiles = {}
+	missileCooldown = 0
+	missileSpawnInterval = 2.5
+	missileSpreadTime = 1.0
+	missileSpreadSpeed = 160
+	missileAcceleration = 500
+	missileSize = 5
+	missileExplosionRadius = 45
+	missileMaxAge = 6
+	missileMaxRange = 600
+	missileMaxRangeSq = missileMaxRange * missileMaxRange
+
+	explosions = {}
+
 	laserGunUnlocked = false
 	laserGunLevel = 0
 	laserGunState = "idle"
@@ -211,6 +227,20 @@ function love.load()
 				end
 			end,
 		},
+		{
+			name = "Missiles",
+			description = "Unlock / +10 missile damage",
+			level = 0,
+			maxLevel = 5,
+			apply = function()
+				if not missilesUnlocked then
+					missilesUnlocked = true
+					missileLevel = 1
+				else
+					missileLevel = missileLevel + 1
+				end
+			end,
+		},
 	}
 
 	healthUpgrade = {
@@ -265,6 +295,9 @@ function resetGame()
 	boomerangsUnlocked = false
 	boomerangLevel = 0
 
+	missilesUnlocked = false
+	missileLevel = 0
+
 	laserGunUnlocked = false
 	laserGunLevel = 0
 	laserGunState = "idle"
@@ -289,6 +322,9 @@ function resetGame()
 	bulletCooldown = 0
 	boomerangs = {}
 	boomerangCooldown = 0
+	missiles = {}
+	missileCooldown = 0
+	explosions = {}
 
 	levelUpActive = false
 	levelUpChoices = {}
@@ -498,6 +534,27 @@ function killEnemy(enemy)
 			totalKills = totalKills - killsForSpecial
 			killsForSpecial = math.floor(killsForSpecial * killsForSpecialScale)
 			spawnSpecialEnemy()
+		end
+	end
+end
+
+function explodeMissile(x, y)
+	table.insert(explosions, {
+		x = x,
+		y = y,
+		age = 0,
+		duration = 0.4,
+		maxRadius = missileExplosionRadius,
+	})
+
+	local damage = 10 * missileLevel
+	local nearby = getNearbyEnemies(x, y, missileExplosionRadius + enemySize)
+	for _, enemy in ipairs(nearby) do
+		if not enemy.dead and enemy.hp > 0 then
+			enemy.hp = enemy.hp - damage
+			if enemy.hp <= 0 then
+				killEnemy(enemy)
+			end
 		end
 	end
 end
@@ -894,6 +951,84 @@ function love.update(dt)
 		end
 	end
 
+	missileCooldown = missileCooldown - dt
+
+	if missilesUnlocked and missileCooldown <= 0 then
+		local count = math.min(4, 1 + missileLevel)
+		for i = 1, count do
+			local angle = math.random() * 2 * math.pi
+			table.insert(missiles, {
+				x = player.x,
+				y = player.y,
+				vx = math.cos(angle) * missileSpreadSpeed,
+				vy = math.sin(angle) * missileSpreadSpeed,
+				age = 0,
+			})
+		end
+		missileCooldown = missileSpawnInterval
+	end
+
+	local missileHitRadius = missileSize + enemySize / 2
+	local missileHitRadiusSq = missileHitRadius * missileHitRadius
+
+	for i = #missiles, 1, -1 do
+		local m = missiles[i]
+		m.age = m.age + dt
+
+		if m.age >= missileSpreadTime then
+			local closest = nil
+			local closestDistSq = math.huge
+			for _, enemy in ipairs(enemies) do
+				if not enemy.dead then
+					local d = distSq(m.x, m.y, enemy.x, enemy.y)
+					if d < closestDistSq then
+						closestDistSq = d
+						closest = enemy
+					end
+				end
+			end
+			if closest then
+				local dirX = closest.x - m.x
+				local dirY = closest.y - m.y
+				local len = math.sqrt(dirX * dirX + dirY * dirY)
+				if len > 0 then
+					m.vx = m.vx + (dirX / len) * missileAcceleration * dt
+					m.vy = m.vy + (dirY / len) * missileAcceleration * dt
+				end
+			end
+		end
+
+		m.x = m.x + m.vx * dt
+		m.y = m.y + m.vy * dt
+
+		local exploded = false
+		local nearby = getNearbyEnemies(m.x, m.y, missileHitRadius + enemySize)
+		for _, enemy in ipairs(nearby) do
+			if not enemy.dead and distSq(m.x, m.y, enemy.x, enemy.y) < missileHitRadiusSq then
+				exploded = true
+				break
+			end
+		end
+
+		if exploded then
+			explodeMissile(m.x, m.y)
+			swapRemove(missiles, i)
+		else
+			local distFromPlayerSq = (m.x - player.x) ^ 2 + (m.y - player.y) ^ 2
+			if m.age > missileMaxAge or distFromPlayerSq > missileMaxRangeSq then
+				swapRemove(missiles, i)
+			end
+		end
+	end
+
+	for i = #explosions, 1, -1 do
+		local ex = explosions[i]
+		ex.age = ex.age + dt
+		if ex.age >= ex.duration then
+			swapRemove(explosions, i)
+		end
+	end
+
 	for i = #chests, 1, -1 do
 		local c = chests[i]
 		c.timer = c.timer - dt
@@ -1086,6 +1221,33 @@ function love.draw()
 		end
 	end
 
+	local missileBlink = (math.floor(love.timer.getTime() * 8) % 2) == 0
+	love.graphics.setColor(missileBlink and 1 or 0.35, missileBlink and 0.85 or 0.3, missileBlink and 0.3 or 0.15)
+	for _, m in ipairs(missiles) do
+		local screenX = m.x - camera.x
+		local screenY = m.y - camera.y
+		if
+			screenX > -missileSize
+			and screenX < window_width + missileSize
+			and screenY > -missileSize
+			and screenY < window_height + missileSize
+		then
+			love.graphics.circle("fill", screenX, screenY, missileSize)
+		end
+	end
+
+	for _, ex in ipairs(explosions) do
+		local progress = ex.age / ex.duration
+		local r = ex.maxRadius * (0.3 + 0.7 * progress)
+		local alpha = 1 - progress
+		local screenX = ex.x - camera.x
+		local screenY = ex.y - camera.y
+		love.graphics.setColor(1, 0.55, 0, alpha)
+		love.graphics.circle("line", screenX, screenY, r)
+		love.graphics.setColor(1, 0.85, 0.25, alpha * 0.5)
+		love.graphics.circle("fill", screenX, screenY, r * 0.8)
+	end
+
 	if laserGunUnlocked then
 		if laserGunState == "charging" or laserGunState == "firing" then
 			local laserLength = math.sqrt(window_width * window_width + window_height * window_height)
@@ -1174,6 +1336,20 @@ function love.draw()
 			.. (laserGunDamageBase + laserGunLevel)
 			.. ")"
 		love.graphics.print(laserText, statsX - font24:getWidth(laserText), 110)
+	end
+
+	if missilesUnlocked then
+		local missileEntry = upgradePool[5]
+		local missileText = "Missiles: "
+			.. missileEntry.level
+			.. "/"
+			.. missileEntry.maxLevel
+			.. " (dmg "
+			.. (10 * missileLevel)
+			.. ", "
+			.. string.format("%.1f", missileCooldown)
+			.. "/2.5s)"
+		love.graphics.print(missileText, statsX - font24:getWidth(missileText), 150)
 	end
 
 	if gameOver then
