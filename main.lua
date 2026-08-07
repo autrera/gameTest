@@ -90,13 +90,13 @@ function love.load()
 	}
 
 	xpNeededA = 0
-	xpNeededB = 100
+	xpNeededB = 50
 	xpNeeded = xpNeededA + xpNeededB
 
 	enemies = {}
 	enemySize = 32
 	enemySpeed = 48
-	enemyExperience = 50
+	enemyExperience = 5
 	baseMaxEnemies = 10
 
 	eliteEnemySize = 40
@@ -287,7 +287,7 @@ function resetGame()
 	laserGunStartY = 0
 
 	xpNeededA = 0
-	xpNeededB = 100
+	xpNeededB = 50
 	xpNeeded = xpNeededA + xpNeededB
 
 	camera.x = player.x - (window_width / 2)
