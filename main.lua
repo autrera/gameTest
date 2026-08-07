@@ -310,6 +310,11 @@ function resetGame()
 	laserGunStartX = 0
 	laserGunStartY = 0
 
+	-- Reset all weapon upgrade progress so a restart starts from base state
+	for i, v in ipairs(upgradePool) do
+		v.level = 0
+	end
+
 	xpNeededA = 0
 	xpNeededB = 50
 	xpNeeded = xpNeededA + xpNeededB
@@ -370,6 +375,8 @@ end
 
 function generateLevelUpChoices()
 	levelUpChoices = {}
+
+	-- Collect all non-maxed weapon upgrades
 	local available = {}
 	for i, v in ipairs(upgradePool) do
 		if v.level < v.maxLevel then
@@ -377,14 +384,20 @@ function generateLevelUpChoices()
 		end
 	end
 
-	for i = 1, 3 do
-		if #available == 0 then
-			table.insert(levelUpChoices, healthUpgrade)
-		else
-			local idx = math.random(1, #available)
-			table.insert(levelUpChoices, available[idx])
-			table.remove(available, idx)
-		end
+	-- Shuffle so the offered weapons are picked at random
+	for i = #available, 2, -1 do
+		local j = math.random(1, i)
+		available[i], available[j] = available[j], available[i]
+	end
+
+	-- Offer distinct weapon upgrades first. With 3+ non-maxed upgrades,
+	-- all 3 choices are weapons; with fewer than 3, Vitality fills the rest.
+	local weaponSlots = math.min(3, #available)
+	for i = 1, weaponSlots do
+		table.insert(levelUpChoices, available[i])
+	end
+	while #levelUpChoices < 3 do
+		table.insert(levelUpChoices, healthUpgrade)
 	end
 end
 
