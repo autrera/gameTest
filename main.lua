@@ -13,6 +13,23 @@ local function swapRemove(t, i)
 	t[n] = nil
 end
 
+function getShieldWaveCooldown()
+	local cooldown = shieldWaveCooldownBase - (shieldWaveLevel - 1) * shieldWaveCooldownStep
+	return math.max(cooldown, 0)
+end
+
+function triggerShieldWave()
+	table.insert(shieldWaves, {
+		x = player.x,
+		y = player.y,
+		age = 0,
+		radius = 0,
+		maxRadius = shieldWaveMaxRadius,
+		duration = shieldWaveExpansionDuration,
+		pushedEnemies = {},
+	})
+end
+
 local function formatPlayTime(seconds)
 	if seconds >= 3600 then
 		local h = math.floor(seconds / 3600)
@@ -140,6 +157,20 @@ function love.load()
 	boomerangRotationSpeed = 6
 	boomerangExpandSpeed = 60
 
+	shieldWaveUnlocked = false
+	shieldWaveLevel = 0
+	shieldWaveCooldown = 0
+	shieldWaveCooldownBase = 5.0
+	shieldWaveCooldownStep = 0.5
+	shieldWaveMaxRadius = 200
+	shieldWaveExpansionDuration = 1.0
+	shieldWavePushbackForce = 280
+	shieldWavePushbackDuration = 0.35
+	shieldWaveColor = { 0.2, 0.6, 1.0 }
+	shieldWaveAlpha = 0.6
+	shieldWaveLineWidth = 4
+	shieldWaves = {}
+
 	missilesUnlocked = false
 	missileLevel = 0
 	missiles = {}
@@ -254,6 +285,22 @@ function love.load()
 				end
 			end,
 		},
+		{
+			name = "Shield Wave",
+			description = "Unlock / wave knocks enemies back",
+			level = 0,
+			maxLevel = 5,
+			apply = function()
+				if not shieldWaveUnlocked then
+					shieldWaveUnlocked = true
+					shieldWaveLevel = 1
+					triggerShieldWave()
+					shieldWaveCooldown = getShieldWaveCooldown()
+				else
+					shieldWaveLevel = shieldWaveLevel + 1
+				end
+			end,
+		},
 	}
 
 	healthUpgrade = {
@@ -305,6 +352,11 @@ function resetGame()
 
 	boomerangsUnlocked = false
 	boomerangLevel = 0
+
+	shieldWaveUnlocked = false
+	shieldWaveLevel = 0
+	shieldWaveCooldown = 0
+	shieldWaves = {}
 
 	missilesUnlocked = false
 	missileLevel = 0
@@ -685,26 +737,71 @@ function love.update(dt)
 	camera.y = player.y - (window_height / 2)
 
 	for _, enemy in ipairs(enemies) do
-		local speed = enemy.speed
-		if not speed then
-			if enemy.isSpecial then
-				speed = specialEnemySpeed
-			elseif enemy.isElite then
-				speed = eliteEnemySpeed
-			else
-				speed = enemySpeed
+		if enemy.knockbackTimer and enemy.knockbackTimer > 0 then
+			-- Shield Wave pushback: briefly override chase with a decaying knockback
+			local falloff = enemy.knockbackTimer / shieldWavePushbackDuration
+			enemy.x = enemy.x + enemy.knockbackVx * falloff * dt
+			enemy.y = enemy.y + enemy.knockbackVy * falloff * dt
+			enemy.knockbackTimer = enemy.knockbackTimer - dt
+		else
+			local speed = enemy.speed
+			if not speed then
+				if enemy.isSpecial then
+					speed = specialEnemySpeed
+				elseif enemy.isElite then
+					speed = eliteEnemySpeed
+				else
+					speed = enemySpeed
+				end
+			end
+			local dirX = player.x - enemy.x
+			local dirY = player.y - enemy.y
+			local lenSq = dirX * dirX + dirY * dirY
+			if lenSq > 0 then
+				local invLen = 1 / math.sqrt(lenSq)
+				dirX = dirX * invLen
+				dirY = dirY * invLen
+			end
+			enemy.x = enemy.x + dirX * speed * dt
+			enemy.y = enemy.y + dirY * speed * dt
+		end
+	end
+
+	shieldWaveCooldown = shieldWaveCooldown - dt
+
+	if shieldWaveUnlocked and shieldWaveCooldown <= 0 then
+		triggerShieldWave()
+		shieldWaveCooldown = getShieldWaveCooldown()
+	end
+
+	for i = #shieldWaves, 1, -1 do
+		local wave = shieldWaves[i]
+		wave.age = wave.age + dt
+		wave.radius = math.min(wave.maxRadius, wave.maxRadius * (wave.age / wave.duration))
+
+		if wave.age >= wave.duration then
+			swapRemove(shieldWaves, i)
+		else
+			-- The expanding ring reaches enemies as it grows; push normal/elite enemies
+			-- backward (away from the wave origin) once per wave. Special enemies are immune.
+			local nearby = getNearbyEnemies(wave.x, wave.y, wave.radius + enemySize)
+			for _, enemy in ipairs(nearby) do
+				if not enemy.isSpecial and not wave.pushedEnemies[enemy] then
+					local touchRadius = wave.radius + enemy.size / 2
+					if distSq(enemy.x, enemy.y, wave.x, wave.y) <= touchRadius * touchRadius then
+						wave.pushedEnemies[enemy] = true
+						local dx = enemy.x - wave.x
+						local dy = enemy.y - wave.y
+						local len = math.sqrt(dx * dx + dy * dy)
+						if len > 0 then
+							enemy.knockbackVx = (dx / len) * shieldWavePushbackForce
+							enemy.knockbackVy = (dy / len) * shieldWavePushbackForce
+							enemy.knockbackTimer = shieldWavePushbackDuration
+						end
+					end
+				end
 			end
 		end
-		local dirX = player.x - enemy.x
-		local dirY = player.y - enemy.y
-		local lenSq = dirX * dirX + dirY * dirY
-		if lenSq > 0 then
-			local invLen = 1 / math.sqrt(lenSq)
-			dirX = dirX * invLen
-			dirY = dirY * invLen
-		end
-		enemy.x = enemy.x + dirX * speed * dt
-		enemy.y = enemy.y + dirY * speed * dt
 	end
 
 	player.damageCooldown = player.damageCooldown - dt
@@ -1276,6 +1373,19 @@ function love.draw()
 		love.graphics.circle("fill", screenX, screenY, r * 0.8)
 	end
 
+	for _, wave in ipairs(shieldWaves) do
+		local progress = wave.age / wave.duration
+		local alpha = shieldWaveAlpha * (1 - progress)
+		local screenX = wave.x - camera.x
+		local screenY = wave.y - camera.y
+		love.graphics.setColor(shieldWaveColor[1], shieldWaveColor[2], shieldWaveColor[3], shieldWaveAlpha * 0.2)
+		love.graphics.circle("fill", screenX, screenY, wave.radius)
+		love.graphics.setColor(shieldWaveColor[1], shieldWaveColor[2], shieldWaveColor[3], alpha)
+		love.graphics.setLineWidth(shieldWaveLineWidth)
+		love.graphics.circle("line", screenX, screenY, wave.radius)
+		love.graphics.setLineWidth(1)
+	end
+
 	if laserGunUnlocked then
 		if laserGunState == "charging" or laserGunState == "firing" then
 			local laserLength = math.sqrt(window_width * window_width + window_height * window_height)
@@ -1378,6 +1488,20 @@ function love.draw()
 			.. string.format("%.1f", missileCooldown)
 			.. "/3.0s)"
 		love.graphics.print(missileText, statsX - font24:getWidth(missileText), 150)
+	end
+
+	if shieldWaveUnlocked then
+		local shieldWaveEntry = getUpgradeByName("Shield Wave")
+		local shieldWaveText = "Shield Wave: "
+			.. shieldWaveEntry.level
+			.. "/"
+			.. shieldWaveEntry.maxLevel
+			.. " ("
+			.. string.format("%.1f", shieldWaveCooldown)
+			.. "/"
+			.. string.format("%.1f", getShieldWaveCooldown())
+			.. "s)"
+		love.graphics.print(shieldWaveText, statsX - font24:getWidth(shieldWaveText), 170)
 	end
 
 	if gameOver then
