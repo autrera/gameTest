@@ -13,6 +13,29 @@ local function swapRemove(t, i)
 	t[n] = nil
 end
 
+-- Missile reach scales with the current viewport: range covers the full screen
+-- diagonal (with a 1400px floor) and max age derives from missile flight physics
+-- (drift phase, acceleration to a capped cruise speed) plus a buffer, so warheads
+-- can always reach targets at or beyond the viewport edges on any resolution.
+-- Must run after window_width/window_height and the missile tuning globals exist
+-- (love.load calls it at startup; love.resize re-runs it).
+local function updateMissileRange()
+	local diagonal = math.sqrt(window_width * window_width + window_height * window_height)
+	missileMaxRange = math.max(1400, diagonal)
+	missileMaxRangeSq = missileMaxRange * missileMaxRange
+
+	-- Flight time to cover missileMaxRange: drift at missileSpreadSpeed for
+	-- missileSpreadTime, accelerate to missileMaxSpeed, then cruise at top speed.
+	local v0 = missileSpreadSpeed
+	local a = missileAcceleration
+	local vmax = missileMaxSpeed
+	local tAccel = (vmax - v0) / a
+	local dAccel = v0 * tAccel + 0.5 * a * tAccel * tAccel
+	local remaining = missileMaxRange - v0 * missileSpreadTime - dAccel
+	local tCruise = remaining > 0 and (remaining / vmax) or 0
+	missileMaxAge = math.max(6, missileSpreadTime + tAccel + tCruise + 0.5)
+end
+
 function getShieldWaveCooldown()
 	local cooldown = shieldWaveCooldownBase - (shieldWaveLevel - 1) * shieldWaveCooldownStep
 	return math.max(cooldown, 0)
@@ -193,9 +216,8 @@ function love.load()
 	missileAcceleration = 500
 	missileSize = 6
 	missileExplosionRadius = 40
-	missileMaxAge = 6
-	missileMaxRange = 800
-	missileMaxRangeSq = missileMaxRange * missileMaxRange
+	missileMaxSpeed = 500
+	updateMissileRange()
 
 	explosions = {}
 
@@ -341,6 +363,9 @@ end
 function love.resize(w, h)
 	window_width = w
 	window_height = h
+	if missileAcceleration then
+		updateMissileRange()
+	end
 end
 
 function love.joystickadded(j)
@@ -426,6 +451,8 @@ function resetGame()
 
 	playerMoveDirX = 0
 	playerMoveDirY = 0
+	playerMovingThisFrame = false
+	spawnRingAngle = math.random() * 2 * math.pi
 
 	dashWanted = false
 	dashTimer = 0
@@ -486,53 +513,44 @@ function generateLevelUpChoices()
 	end
 end
 
+local SPAWN_MARGIN = 50
+local SPAWN_FORWARD_WEIGHT = 0.72
+local SPAWN_FORWARD_SPREAD = 1.7 -- rad, half-width of the forward-weighted window
+local SPAWN_GOLDEN_ANGLE = math.pi * (3 - math.sqrt(5))
+
 function spawnEnemies()
 	local maxEnemies = baseMaxEnemies + (player.level - 1) * 20
+	local halfW = window_width / 2
+	local halfH = window_height / 2
+
 	while #enemies < maxEnemies do
-		local edge
-		local margin = 50
-		local x, y
-
-		local biased = math.random() < 0.75 and (playerMoveDirX ~= 0 or playerMoveDirY ~= 0)
-
-		if biased then
-			-- Pick an edge the player is moving toward, weighted by direction magnitude
-			local absDx = math.abs(playerMoveDirX)
-			local absDy = math.abs(playerMoveDirY)
-			local total = absDx + absDy
-
-			if math.random() < absDx / total then
-				-- Horizontal edge
-				if playerMoveDirX > 0 then
-					edge = 2 -- right
-				else
-					edge = 1 -- left
-				end
+		local angle
+		if playerMovingThisFrame and (playerMoveDirX ~= 0 or playerMoveDirY ~= 0) then
+			-- Moving player: bias spawn angles toward the direction of travel so
+			-- hordes don't pile up behind, while keeping a uniform floor for
+			-- smooth surrounding coverage around the player's path.
+			if math.random() < SPAWN_FORWARD_WEIGHT then
+				local moveAngle = math.atan2(playerMoveDirY, playerMoveDirX)
+				angle = moveAngle + (math.random() + math.random() - 1) * SPAWN_FORWARD_SPREAD
 			else
-				-- Vertical edge
-				if playerMoveDirY > 0 then
-					edge = 4 -- bottom
-				else
-					edge = 3 -- top
-				end
+				angle = math.random() * 2 * math.pi
 			end
 		else
-			edge = math.random(4)
+			-- Stationary player: surround evenly with a full 360° ring. Golden-angle
+			-- spacing keeps successive spawns spread out instead of clumping.
+			spawnRingAngle = spawnRingAngle + SPAWN_GOLDEN_ANGLE
+			angle = spawnRingAngle + (math.random() - 0.5) * 0.35
 		end
 
-		if edge == 1 then
-			x = camera.x - margin
-			y = camera.y + math.random() * window_height
-		elseif edge == 2 then
-			x = camera.x + window_width + margin
-			y = camera.y + math.random() * window_height
-		elseif edge == 3 then
-			x = camera.x + math.random() * window_width
-			y = camera.y - margin
-		else
-			x = camera.x + math.random() * window_width
-			y = camera.y + window_height + margin
-		end
+		-- Project the spawn ray onto the extended viewport rectangle so every enemy
+		-- appears just beyond the visible boundary at any angle and resolution.
+		local margin = SPAWN_MARGIN + math.random() * 30
+		local t = math.min(
+			(halfW + margin) / math.max(math.abs(math.cos(angle)), 0.0001),
+			(halfH + margin) / math.max(math.abs(math.sin(angle)), 0.0001)
+		)
+		local x = player.x + math.cos(angle) * t
+		local y = player.y + math.sin(angle) * t
 
 		local enemyType = "normal"
 		if player.level >= 5 then
@@ -734,6 +752,8 @@ function love.update(dt)
 		dx = dx / len
 		dy = dy / len
 	end
+
+	playerMovingThisFrame = (dx ~= 0 or dy ~= 0)
 
 	if dx ~= 0 or dy ~= 0 then
 		playerMoveDirX = dx
@@ -1109,7 +1129,10 @@ function love.update(dt)
 		local m = missiles[i]
 		m.age = m.age + dt
 
-		if m.age >= missileSpreadTime and not m.targetAcquired then
+		if m.age >= missileSpreadTime then
+			-- Home onto the nearest live enemy every frame so warheads track moving
+			-- targets instead of flying a stale line (which let edge targets slip
+			-- past at long range).
 			local closest = nil
 			local closestDistSq = math.huge
 			for _, enemy in ipairs(enemies) do
@@ -1138,6 +1161,13 @@ function love.update(dt)
 		if m.dirX and m.dirY then
 			m.vx = m.vx + m.dirX * missileAcceleration * dt
 			m.vy = m.vy + m.dirY * missileAcceleration * dt
+			-- Cap top speed so warheads stay maneuverable enough to home onto
+			-- targets at long range (an unbounded velocity outruns its turn).
+			local spd = math.sqrt(m.vx * m.vx + m.vy * m.vy)
+			if spd > missileMaxSpeed then
+				m.vx = m.vx / spd * missileMaxSpeed
+				m.vy = m.vy / spd * missileMaxSpeed
+			end
 		end
 
 		m.x = m.x + m.vx * dt
@@ -1156,17 +1186,11 @@ function love.update(dt)
 			explodeMissile(m.x, m.y)
 			swapRemove(missiles, i)
 		else
-			local screenX = m.x - camera.x
-			local screenY = m.y - camera.y
+			-- Lifetime is bounded by max age and max range (both derived from the
+			-- viewport); no off-screen cull here so warheads can reach targets that
+			-- sit at or beyond the viewport edges.
 			local distFromPlayerSq = (m.x - player.x) ^ 2 + (m.y - player.y) ^ 2
-			if
-				m.age > missileMaxAge
-				or distFromPlayerSq > missileMaxRangeSq
-				or screenX < -50
-				or screenX > window_width + 50
-				or screenY < -50
-				or screenY > window_height + 50
-			then
+			if m.age > missileMaxAge or distFromPlayerSq > missileMaxRangeSq then
 				swapRemove(missiles, i)
 			end
 		end
@@ -1331,6 +1355,59 @@ local function drawProgressBar(x, y, w, h, ratio, r, c1, c2)
 	local fw = (w - pad * 2) * ratio
 	if fw > 1 then
 		drawGradientRounded(x + pad, y + pad, fw, h - pad * 2, math.max(2, r - pad), c1, c2)
+	end
+end
+
+-- Current cooldown (seconds remaining) and its maximum for a given weapon, used
+-- to drive the HUD cooldown bars. A current value <= 0 means the weapon is ready.
+local function getWeaponCooldown(name)
+	if name == "Pistol" then
+		return math.max(bulletCooldown, 0), bulletFireRate
+	elseif name == "Boomerang" then
+		return math.max(boomerangCooldown, 0), 5
+	elseif name == "Laser Gun" then
+		-- Charging/cooldown tick laserGunTimer down to 0; idle/firing mean it is ready.
+		if laserGunState == "idle" or laserGunState == "firing" then
+			return 0, 1
+		else
+			return math.max(laserGunTimer, 0), 1
+		end
+	elseif name == "Missiles" then
+		return math.max(missileCooldown, 0), missileSpawnInterval
+	elseif name == "Shield Wave" then
+		return math.max(shieldWaveCooldown, 0), getShieldWaveCooldown()
+	end
+	return 0, 1
+end
+
+-- Sleek rounded mini bar showing weapon cooldown recovery. Fills with a gradient
+-- as the cooldown recovers (ratio = 1 - cur/max); once ready it switches to a
+-- vibrant full fill with a pulsing outer glow.
+local function drawCooldownBar(x, y, w, h, ratio, accent, ready)
+	ratio = clamp01(ratio)
+	-- track
+	love.graphics.setColor(0.02, 0.03, 0.06, 0.85)
+	love.graphics.rectangle("fill", x, y, w, h, h / 2, h / 2)
+	love.graphics.setColor(1, 1, 1, 0.08)
+	love.graphics.setLineWidth(1)
+	love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, h / 2, h / 2)
+
+	local pad = 1.5
+	if ready then
+		local pulse = 0.5 + 0.5 * math.sin(titleTime * 5)
+		love.graphics.setColor(accent[1], accent[2], accent[3], 0.16 + pulse * 0.16)
+		love.graphics.rectangle("fill", x - 3, y - 3, w + 6, h + 6, h / 2 + 3, h / 2 + 3)
+		local bright = {
+			math.min(1, accent[1] + 0.3),
+			math.min(1, accent[2] + 0.3),
+			math.min(1, accent[3] + 0.3),
+		}
+		drawGradientRounded(x + pad, y + pad, w - pad * 2, h - pad * 2, math.max(2, h / 2 - pad), bright, accent)
+	elseif ratio > 0 then
+		local fw = (w - pad * 2) * ratio
+		if fw > 1 then
+			drawGradientRounded(x + pad, y + pad, fw, h - pad * 2, math.max(2, h / 2 - pad), accent, mixColor(accent, { 0.12, 0.2, 0.4 }, 0.55))
+		end
 	end
 end
 
@@ -1505,7 +1582,7 @@ local function drawHUD()
 			name = "Boomerang",
 			level = up.level,
 			maxLevel = up.maxLevel,
-			stat = "×" .. (1 + boomerangLevel) .. "   ·   CD " .. string.format("%.1f", boomerangCooldown) .. "S",
+			stat = "×" .. (1 + boomerangLevel) .. "   ·   ORBIT",
 		})
 	end
 	if laserGunUnlocked then
@@ -1523,7 +1600,7 @@ local function drawHUD()
 			name = "Missiles",
 			level = up.level,
 			maxLevel = up.maxLevel,
-			stat = "DMG " .. (10 * missileLevel) .. "   ·   CD " .. string.format("%.1f", missileCooldown) .. "S",
+			stat = "DMG " .. (10 * missileLevel) .. "   ·   AOE",
 		})
 	end
 	if shieldWaveUnlocked then
@@ -1532,12 +1609,12 @@ local function drawHUD()
 			name = "Shield Wave",
 			level = up.level,
 			maxLevel = up.maxLevel,
-			stat = "CD " .. string.format("%.1f", shieldWaveCooldown) .. "/" .. string.format("%.1f", getShieldWaveCooldown()) .. "S",
+			stat = "PUSH " .. shieldWavePushbackForce .. "   ·   R " .. shieldWaveMaxRadius,
 		})
 	end
 
 	local ax = window_width - pad - panelW
-	local arowH = 58
+	local arowH = 64
 	local apanelH = 44 + #owned * arowH + 8
 	drawPanel(ax, y, panelW, apanelH, 14)
 
@@ -1571,6 +1648,11 @@ local function drawHUD()
 		local pipGap = 4
 		local pipW = entry.maxLevel * (pipR * 2) + (entry.maxLevel - 1) * pipGap
 		drawLevelPips(ax + panelW - 14 - pipW, ry + 27, entry.level, entry.maxLevel, pipR, pipGap, accent)
+
+		-- Cooldown recovery bar: fills as the weapon readies, glows when READY.
+		local cdCur, cdMax = getWeaponCooldown(entry.name)
+		local cdRatio = (cdMax > 0) and (1 - cdCur / cdMax) or 1
+		drawCooldownBar(ax + 60, ry + 46, panelW - 60 - 14, 8, cdRatio, accent, cdCur <= 0)
 	end
 
 	-- FPS readout, bottom-right corner
