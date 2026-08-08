@@ -89,12 +89,24 @@ end
 
 function love.load()
 	math.randomseed(os.time())
-	love.window.setMode(window_width, window_height)
 
+	-- Launch in desktop fullscreen; resolution is derived from the active
+	-- monitor so every layout scales to any screen size.
+	love.window.setMode(window_width, window_height, {
+		fullscreen = true,
+		fullscreentype = "desktop",
+		resizable = true,
+		vsync = 1,
+	})
+	window_width, window_height = love.graphics.getDimensions()
+
+	font16 = love.graphics.newFont(16)
+	font18 = love.graphics.newFont(18)
 	font20 = love.graphics.newFont(20)
 	font24 = love.graphics.newFont(24)
 	font28 = love.graphics.newFont(28)
 	font48 = love.graphics.newFont(48)
+	font64 = love.graphics.newFont(64)
 
 	player = {
 		x = 0,
@@ -319,6 +331,16 @@ function love.load()
 	chests = {}
 
 	resetGame()
+
+	titleScreen = true
+	titleOptions = { "Start Game", "Quit" }
+	titleSelectedOption = 1
+	titleTime = 0
+end
+
+function love.resize(w, h)
+	window_width = w
+	window_height = h
 end
 
 function love.joystickadded(j)
@@ -645,6 +667,12 @@ function explodeMissile(x, y)
 end
 
 function love.update(dt)
+	titleTime = titleTime + dt
+
+	if titleScreen then
+		return
+	end
+
 	if levelUpActive and levelUpInputDelay > 0 then
 		levelUpInputDelay = levelUpInputDelay - dt
 	end
@@ -1193,7 +1221,645 @@ function love.update(dt)
 	spawnEnemies()
 end
 
-function love.draw()
+-- =====================================================================
+-- Modern UI system: palette, glass panels, gradient bars, overlays
+-- =====================================================================
+
+local UI_ACCENT = { 0.32, 0.75, 1.0 }
+local UI_HP = { 1.0, 0.26, 0.34 }
+local UI_HP_DARK = { 0.82, 0.12, 0.22 }
+local UI_XP = { 0.58, 0.36, 1.0 }
+local UI_XP_DARK = { 0.32, 0.52, 1.0 }
+
+local function lerp(a, b, t)
+	return a + (b - a) * t
+end
+
+local function clamp01(v)
+	return math.max(0, math.min(1, v))
+end
+
+local function mixColor(c1, c2, t)
+	return {
+		lerp(c1[1], c2[1], t),
+		lerp(c1[2], c2[2], t),
+		lerp(c1[3], c2[3], t),
+		lerp(c1[4] or 1, c2[4] or 1, t),
+	}
+end
+
+local function getUpgradeAccent(name)
+	if name == "Boomerang" then
+		return { 0.05, 0.9, 0.95 }
+	elseif name == "Laser Gun" then
+		return { 1.0, 0.32, 0.36 }
+	elseif name == "Missiles" then
+		return { 1.0, 0.62, 0.22 }
+	elseif name == "Shield Wave" then
+		return { 0.35, 0.72, 1.0 }
+	elseif name == "Vitality" then
+		return { 0.35, 0.92, 0.55 }
+	end
+	return { 0.62, 0.68, 0.78 } -- Pistol / default
+end
+
+local function getWeaponIcon(name)
+	if name == "Pistol" then
+		return "pistol"
+	elseif name == "Boomerang" then
+		return "boomerang"
+	elseif name == "Laser Gun" then
+		return "laser"
+	elseif name == "Missiles" then
+		return "missiles"
+	elseif name == "Shield Wave" then
+		return "shield"
+	end
+	return "pistol"
+end
+
+-- Rounded rect filled with a vertical gradient (c1 top -> c2 bottom).
+local function drawGradientRounded(x, y, w, h, r, c1, c2)
+	if w <= 0 or h <= 0 then
+		return
+	end
+	r = math.min(r, h / 2, w / 2)
+	local base = mixColor(c1, c2, 0.5)
+	love.graphics.setColor(base[1], base[2], base[3], base[4])
+	love.graphics.rectangle("fill", x, y, w, h, r, r)
+	local coreX = x + r
+	local coreW = w - r * 2
+	if coreW > 0 then
+		for i = 0, h - 1 do
+			local t = h <= 1 and 0 or (i / (h - 1))
+			local c = mixColor(c1, c2, t)
+			love.graphics.setColor(c[1], c[2], c[3], c[4])
+			love.graphics.rectangle("fill", coreX, y + i, coreW, 1)
+		end
+		love.graphics.setColor(c1[1], c1[2], c1[3], c1[4] or 1)
+		love.graphics.rectangle("fill", x, y, r, h, r * 0.8, r * 0.8)
+		love.graphics.setColor(c2[1], c2[2], c2[3], c2[4] or 1)
+		love.graphics.rectangle("fill", x + w - r, y, r, h, r * 0.8, r * 0.8)
+	end
+end
+
+-- Translucent glass panel with border and a subtle top sheen.
+local function drawPanel(x, y, w, h, r, fill, border)
+	if w <= 0 or h <= 0 then
+		return
+	end
+	r = math.min(r, h / 2, w / 2)
+	local f = fill or { 0.05, 0.07, 0.12, 0.6 }
+	love.graphics.setColor(f[1], f[2], f[3], f[4])
+	love.graphics.rectangle("fill", x, y, w, h, r, r)
+	local b = border or { 1, 1, 1, 0.12 }
+	love.graphics.setLineWidth(1.5)
+	love.graphics.setColor(b[1], b[2], b[3], b[4])
+	love.graphics.rectangle("line", x + 0.75, y + 0.75, w - 1.5, h - 1.5, r, r)
+	love.graphics.setLineWidth(1)
+end
+
+-- Rounded progress bar: dark track + gradient fill.
+local function drawProgressBar(x, y, w, h, ratio, r, c1, c2)
+	ratio = clamp01(ratio)
+	love.graphics.setColor(0.02, 0.03, 0.06, 0.8)
+	love.graphics.rectangle("fill", x, y, w, h, r, r)
+	love.graphics.setColor(1, 1, 1, 0.1)
+	love.graphics.setLineWidth(1)
+	love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, r, r)
+	local pad = 1.5
+	local fw = (w - pad * 2) * ratio
+	if fw > 1 then
+		drawGradientRounded(x + pad, y + pad, fw, h - pad * 2, math.max(2, r - pad), c1, c2)
+	end
+end
+
+-- Level pips for upgrade tier indicators.
+local function drawLevelPips(x, y, level, maxLevel, r, gap, color)
+	for i = 1, maxLevel do
+		local px = x + (i - 1) * (r * 2 + gap) + r
+		if i <= level then
+			love.graphics.setColor(color[1], color[2], color[3], 0.95)
+			love.graphics.circle("fill", px, y + r, r)
+		else
+			love.graphics.setColor(1, 1, 1, 0.14)
+			love.graphics.circle("fill", px, y + r, r)
+		end
+	end
+end
+
+-- Edge-darkening vignette.
+local function drawVignette(alpha, edge)
+	edge = edge or 90
+	local w, h = window_width, window_height
+	local strips = 12
+	for i = 1, strips do
+		local t = i / strips
+		local a = alpha * (1 - t) * (1 - t)
+		love.graphics.setColor(0, 0, 0, a)
+		local thick = edge / strips
+		love.graphics.rectangle("fill", 0, (i - 1) * thick, w, thick + 1)
+		love.graphics.rectangle("fill", 0, h - i * thick, w, thick + 1)
+		love.graphics.rectangle("fill", (i - 1) * thick, 0, thick + 1, h)
+		love.graphics.rectangle("fill", w - i * thick, 0, thick + 1, h)
+	end
+end
+
+local function wrapText(text, font, maxW)
+	local lines = {}
+	local line = ""
+	for w in text:gmatch("%S+") do
+		local trial = line == "" and w or (line .. " " .. w)
+		if font:getWidth(trial) <= maxW or line == "" then
+			line = trial
+		else
+			table.insert(lines, line)
+			line = w
+		end
+	end
+	if line ~= "" then
+		table.insert(lines, line)
+	end
+	return lines
+end
+
+local function drawTextCentered(text, font, x, y, color)
+	love.graphics.setFont(font)
+	love.graphics.setColor(color[1], color[2], color[3], color[4] or 1)
+	local w = font:getWidth(text)
+	love.graphics.print(text, x - w / 2, y)
+	return w
+end
+
+local function drawTextRight(text, font, x, y, color)
+	love.graphics.setFont(font)
+	love.graphics.setColor(color[1], color[2], color[3], color[4] or 1)
+	love.graphics.print(text, x - font:getWidth(text), y)
+end
+
+-- Modern menu button; accent highlights the selected entry.
+local function drawMenuButton(x, y, w, h, label, font, selected, accent)
+	local acc = accent or UI_ACCENT
+	if selected then
+		drawPanel(x - 4, y - 4, w + 8, h + 8, 14, { acc[1], acc[2], acc[3], 0.16 }, { acc[1], acc[2], acc[3], 0.9 })
+		love.graphics.setColor(acc[1], acc[2], acc[3], 1)
+		love.graphics.rectangle("fill", x - 4, y + 10, 3, h - 20, 1.5, 1.5)
+	else
+		drawPanel(x, y, w, h, 12, { 0.05, 0.06, 0.11, 0.7 }, { 1, 1, 1, 0.14 })
+	end
+	local col = selected and { 1, 1, 1, 1 } or { 0.7, 0.74, 0.82, 1 }
+	drawTextCentered(label, font, x + w / 2, y + (h - font:getHeight()) / 2 - 2, col)
+end
+
+-- Circular level badge.
+local function drawLevelBadge(cx, cy, r, level)
+	love.graphics.setColor(UI_ACCENT[1], UI_ACCENT[2], UI_ACCENT[3], 0.28)
+	love.graphics.circle("fill", cx, cy, r + 3)
+	love.graphics.setColor(UI_ACCENT[1], UI_ACCENT[2], UI_ACCENT[3], 0.9)
+	love.graphics.circle("fill", cx, cy, r)
+	love.graphics.setColor(0.03, 0.05, 0.1, 0.95)
+	love.graphics.circle("fill", cx, cy, r - 3.5)
+	love.graphics.setColor(1, 1, 1, 0.1)
+	love.graphics.circle("fill", cx, cy - r * 0.3, r * 0.6)
+	love.graphics.setFont(font28)
+	local txt = tostring(level)
+	love.graphics.setColor(1, 1, 1, 1)
+	love.graphics.print(txt, cx - font28:getWidth(txt) / 2, cy - font28:getHeight() / 2)
+end
+
+-- Tiny weapon glyphs used in icon tiles.
+local function drawWeaponGlyph(icon, cx, cy, color)
+	love.graphics.setColor(color[1], color[2], color[3], 1)
+	if icon == "pistol" then
+		love.graphics.rectangle("fill", cx - 8, cy - 3, 14, 6, 2, 2)
+		love.graphics.rectangle("fill", cx + 5, cy - 1, 7, 2, 1, 1)
+	elseif icon == "boomerang" then
+		love.graphics.polygon("fill", cx - 8, cy + 7, cx + 8, cy + 7, cx, cy - 8)
+	elseif icon == "laser" then
+		love.graphics.setLineWidth(3)
+		love.graphics.line(cx - 8, cy - 8, cx + 8, cy + 8)
+		love.graphics.setLineWidth(1)
+	elseif icon == "missiles" then
+		love.graphics.circle("fill", cx, cy - 4, 5)
+		love.graphics.circle("fill", cx + 6, cy + 4, 3.5)
+		love.graphics.circle("fill", cx - 6, cy + 4, 3.5)
+	elseif icon == "shield" then
+		love.graphics.setLineWidth(2)
+		love.graphics.circle("line", cx, cy, 7)
+		love.graphics.circle("line", cx, cy, 3.5)
+		love.graphics.setLineWidth(1)
+	elseif icon == "heart" then
+		love.graphics.rectangle("fill", cx - 2, cy - 7, 4, 14, 1, 1)
+		love.graphics.rectangle("fill", cx - 7, cy - 2, 14, 4, 1, 1)
+	end
+end
+
+-- ---------------------------------------------------------------
+-- In-game HUD
+-- ---------------------------------------------------------------
+local function drawHUD()
+	local pad = 18
+
+	-- Left panel: player vitals
+	local panelW = 340
+	local panelH = 110
+	local x, y = pad, pad
+	drawPanel(x, y, panelW, panelH, 14)
+
+	drawLevelBadge(x + 36, y + 55, 24, player.level)
+
+	local bx = x + 84
+	local bw = panelW - 84 - 14
+
+	love.graphics.setFont(font16)
+	love.graphics.setColor(0.85, 0.32, 0.4, 1)
+	love.graphics.print("HEALTH", bx, y + 10)
+	local hpRatio = player.maxHp > 0 and (player.hp / player.maxHp) or 0
+	drawProgressBar(bx, y + 28, bw, 13, hpRatio, 7, UI_HP, UI_HP_DARK)
+	drawTextRight(player.hp .. " / " .. player.maxHp, font20, bx + bw, y + 25, { 1, 1, 1, 1 })
+
+	love.graphics.setFont(font16)
+	love.graphics.setColor(0.72, 0.55, 1, 1)
+	love.graphics.print("XP", bx, y + 48)
+	local xpRatio = xpNeeded > 0 and (player.experience / xpNeeded) or 0
+	drawProgressBar(bx + 24, y + 48, bw - 24, 13, xpRatio, 7, UI_XP, UI_XP_DARK)
+	drawTextRight(player.experience .. " / " .. xpNeeded, font20, bx + bw, y + 45, { 1, 1, 1, 1 })
+
+	love.graphics.setFont(font16)
+	love.graphics.setColor(0.55, 0.6, 0.7, 1)
+	love.graphics.print("TIME " .. formatPlayTime(sessionTimer), x + 14, y + panelH - 22)
+	drawTextRight("KILLS " .. totalKills, font16, x + panelW - 14, y + panelH - 22, { 1, 0.75, 0.3, 1 })
+
+	-- Right panel: arsenal (owned weapons + tiers + live stats)
+	local owned = {}
+	local pistolUp = getUpgradeByName("Pistol")
+	table.insert(owned, {
+		name = "Pistol",
+		level = pistolUp.level,
+		maxLevel = pistolUp.maxLevel,
+		stat = "DMG " .. bulletDamage .. "   ·   " .. fireRateLevel .. "/S",
+	})
+	if boomerangsUnlocked then
+		local up = getUpgradeByName("Boomerang")
+		table.insert(owned, {
+			name = "Boomerang",
+			level = up.level,
+			maxLevel = up.maxLevel,
+			stat = "×" .. (1 + boomerangLevel) .. "   ·   CD " .. string.format("%.1f", boomerangCooldown) .. "S",
+		})
+	end
+	if laserGunUnlocked then
+		local up = getUpgradeByName("Laser Gun")
+		table.insert(owned, {
+			name = "Laser Gun",
+			level = up.level,
+			maxLevel = up.maxLevel,
+			stat = "DMG " .. (laserGunDamageBase + laserGunLevel),
+		})
+	end
+	if missilesUnlocked then
+		local up = getUpgradeByName("Missiles")
+		table.insert(owned, {
+			name = "Missiles",
+			level = up.level,
+			maxLevel = up.maxLevel,
+			stat = "DMG " .. (10 * missileLevel) .. "   ·   CD " .. string.format("%.1f", missileCooldown) .. "S",
+		})
+	end
+	if shieldWaveUnlocked then
+		local up = getUpgradeByName("Shield Wave")
+		table.insert(owned, {
+			name = "Shield Wave",
+			level = up.level,
+			maxLevel = up.maxLevel,
+			stat = "CD " .. string.format("%.1f", shieldWaveCooldown) .. "/" .. string.format("%.1f", getShieldWaveCooldown()) .. "S",
+		})
+	end
+
+	local ax = window_width - pad - panelW
+	local arowH = 58
+	local apanelH = 44 + #owned * arowH + 8
+	drawPanel(ax, y, panelW, apanelH, 14)
+
+	love.graphics.setFont(font16)
+	love.graphics.setColor(UI_ACCENT[1], UI_ACCENT[2], UI_ACCENT[3], 1)
+	love.graphics.print("ARSENAL", ax + 14, y + 12)
+	drawGradientRounded(ax + 14, y + 32, 90, 3, 1.5, UI_ACCENT, UI_XP)
+
+	for rowIdx, entry in ipairs(owned) do
+		local ry = y + 44 + (rowIdx - 1) * arowH
+		local accent = getUpgradeAccent(entry.name)
+		local icon = getWeaponIcon(entry.name)
+
+		love.graphics.setColor(accent[1], accent[2], accent[3], 0.14)
+		love.graphics.rectangle("fill", ax + 14, ry + 4, 36, 36, 9, 9)
+		love.graphics.setColor(accent[1], accent[2], accent[3], 0.55)
+		love.graphics.setLineWidth(1.5)
+		love.graphics.rectangle("line", ax + 14, ry + 4, 36, 36, 9, 9)
+		love.graphics.setLineWidth(1)
+		drawWeaponGlyph(icon, ax + 14 + 18, ry + 4 + 18, accent)
+
+		love.graphics.setFont(font20)
+		love.graphics.setColor(1, 1, 1, 1)
+		love.graphics.print(entry.name, ax + 60, ry + 3)
+		drawTextRight("LV " .. entry.level .. "/" .. entry.maxLevel, font16, ax + panelW - 14, ry + 7, { 0.6, 0.66, 0.76, 1 })
+
+		love.graphics.setFont(font16)
+		love.graphics.setColor(0.62, 0.68, 0.78, 1)
+		love.graphics.print(entry.stat, ax + 60, ry + 26)
+		local pipR = 3.5
+		local pipGap = 4
+		local pipW = entry.maxLevel * (pipR * 2) + (entry.maxLevel - 1) * pipGap
+		drawLevelPips(ax + panelW - 14 - pipW, ry + 27, entry.level, entry.maxLevel, pipR, pipGap, accent)
+	end
+
+	-- FPS readout, bottom-right corner
+	local fpsText = "FPS " .. tostring(love.timer.getFPS())
+	local fpsW = font16:getWidth(fpsText)
+	love.graphics.setColor(0.02, 0.03, 0.06, 0.55)
+	love.graphics.rectangle("fill", window_width - fpsW - 22, window_height - 34, fpsW + 12, 22, 11, 11)
+	drawTextRight(fpsText, font16, window_width - 10, window_height - 30, { 0.72, 0.78, 0.88, 1 })
+end
+
+-- ---------------------------------------------------------------
+-- Level-up cards
+-- ---------------------------------------------------------------
+local LEVELUP_CARD_W = 300
+local LEVELUP_CARD_H = 258
+local LEVELUP_CARD_GAP = 34
+
+local function getLevelUpLayout()
+	local totalW = LEVELUP_CARD_W * 3 + LEVELUP_CARD_GAP * 2
+	local startX = (window_width - totalW) / 2
+	local startY = window_height / 2 - LEVELUP_CARD_H / 2 - 40
+	return startX, startY
+end
+
+local function drawLevelUpOverlay()
+	love.graphics.setColor(0, 0, 0, 0.82)
+	love.graphics.rectangle("fill", 0, 0, window_width, window_height)
+	drawVignette(0.5)
+
+	drawTextCentered("LEVEL UP", font48, window_width / 2, 84, { 1, 1, 1, 1 })
+	drawGradientRounded(window_width / 2 - 70, 142, 140, 4, 2, UI_ACCENT, UI_XP)
+	drawTextCentered("CHOOSE AN UPGRADE", font16, window_width / 2, 156, { 0.55, 0.6, 0.7, 1 })
+
+	local startX, startY = getLevelUpLayout()
+	for i, choice in ipairs(levelUpChoices) do
+		local cardX = startX + (i - 1) * (LEVELUP_CARD_W + LEVELUP_CARD_GAP)
+		local cardY = startY
+		local selected = i == selectedChoice
+		local accent = getUpgradeAccent(choice.name)
+		local isSupport = choice == healthUpgrade
+
+		if selected then
+			cardY = cardY - 8
+			love.graphics.setColor(accent[1], accent[2], accent[3], 0.16)
+			love.graphics.rectangle("fill", cardX - 8, cardY - 8, LEVELUP_CARD_W + 16, LEVELUP_CARD_H + 16, 20, 20)
+		end
+
+		drawPanel(
+			cardX,
+			cardY,
+			LEVELUP_CARD_W,
+			LEVELUP_CARD_H,
+			16,
+			selected and { accent[1], accent[2], accent[3], 0.1 } or { 0.05, 0.07, 0.12, 0.72 },
+			selected and { accent[1], accent[2], accent[3], 0.95 } or { 1, 1, 1, 0.14 }
+		)
+
+		if selected then
+			love.graphics.setLineWidth(2.5)
+			love.graphics.setColor(accent[1], accent[2], accent[3], 1)
+			love.graphics.rectangle("line", cardX + 2, cardY + 2, LEVELUP_CARD_W - 4, LEVELUP_CARD_H - 4, 14, 14)
+			love.graphics.setLineWidth(1)
+		end
+
+		-- category badge
+		local catText = isSupport and "SUPPORT" or "WEAPON"
+		love.graphics.setFont(font16)
+		local catW = font16:getWidth(catText) + 18
+		love.graphics.setColor(isSupport and { 0.35, 0.92, 0.55, 0.2 } or { accent[1], accent[2], accent[3], 0.22 })
+		love.graphics.rectangle("fill", cardX + 14, cardY + 14, catW, 22, 11, 11)
+		love.graphics.setColor(isSupport and { 0.35, 0.92, 0.55, 1 } or { accent[1], accent[2], accent[3], 1 })
+		love.graphics.print(catText, cardX + 14 + 9, cardY + 14 + (22 - font16:getHeight()) / 2)
+
+		-- progression counter
+		local progText
+		if choice.level ~= nil and choice.level > 0 then
+			progText = "LV " .. choice.level .. " -> " .. (choice.level + 1)
+		elseif choice.level ~= nil then
+			progText = "NEW"
+		else
+			progText = "LV 0 -> 1"
+		end
+		love.graphics.setFont(font16)
+		local progW = font16:getWidth(progText)
+		love.graphics.setColor(0.7, 0.75, 0.85, 1)
+		love.graphics.print(progText, cardX + LEVELUP_CARD_W - 14 - progW, cardY + 14 + (22 - font16:getHeight()) / 2)
+
+		-- icon tile
+		local iconX = cardX + LEVELUP_CARD_W / 2
+		local iconY = cardY + 78
+		love.graphics.setColor(accent[1], accent[2], accent[3], 0.12)
+		love.graphics.rectangle("fill", iconX - 30, iconY - 30, 60, 60, 14, 14)
+		love.graphics.setColor(accent[1], accent[2], accent[3], 0.6)
+		love.graphics.setLineWidth(1.5)
+		love.graphics.rectangle("line", iconX - 30, iconY - 30, 60, 60, 14, 14)
+		love.graphics.setLineWidth(1)
+		drawWeaponGlyph(isSupport and "heart" or getWeaponIcon(choice.name), iconX, iconY, accent)
+
+		-- name + description
+		drawTextCentered(choice.name, font28, iconX, cardY + 118, { 1, 1, 1, 1 })
+		local descLines = wrapText(choice.description, font18, LEVELUP_CARD_W - 44)
+		local descY = cardY + 158
+		for li, dl in ipairs(descLines) do
+			drawTextCentered(dl, font18, iconX, descY + (li - 1) * (font18:getHeight() + 2), { 0.68, 0.72, 0.82, 1 })
+		end
+
+		-- tier pips + next-level highlight
+		local pipsLevel = choice.level or 0
+		local pipCount = 5
+		local pipR = 5
+		local pipGap = 8
+		local pipW = pipCount * (pipR * 2) + (pipCount - 1) * pipGap
+		local pipsY = cardY + LEVELUP_CARD_H - 34
+		for j = 1, pipCount do
+			local px = iconX - pipW / 2 + (j - 1) * (pipR * 2 + pipGap) + pipR
+			if j <= pipsLevel then
+				love.graphics.setColor(accent[1], accent[2], accent[3], 1)
+				love.graphics.circle("fill", px, pipsY, pipR)
+			else
+				love.graphics.setColor(1, 1, 1, 0.15)
+				love.graphics.circle("fill", px, pipsY, pipR)
+			end
+		end
+		if choice.level ~= nil and choice.level < pipCount then
+			local px = iconX - pipW / 2 + choice.level * (pipR * 2 + pipGap) + pipR
+			love.graphics.setColor(1, 1, 1, 0.9)
+			love.graphics.circle("line", px, pipsY, pipR + 2)
+		end
+
+		-- key hint
+		love.graphics.setFont(font18)
+		love.graphics.setColor(0.25, 0.28, 0.36, 0.9)
+		love.graphics.circle("fill", cardX + 22, cardY + LEVELUP_CARD_H - 18, 11)
+		love.graphics.setColor(1, 1, 1, selected and 0.95 or 0.6)
+		local numTxt = tostring(i)
+		love.graphics.print(numTxt, cardX + 22 - font18:getWidth(numTxt) / 2, cardY + LEVELUP_CARD_H - 18 - font18:getHeight() / 2)
+	end
+
+	drawTextCentered("PRESS 1 / 2 / 3  ·  ARROWS + ENTER  ·  GAMEPAD A", font16, window_width / 2, startY + LEVELUP_CARD_H + 26, { 0.5, 0.55, 0.65, 1 })
+end
+
+-- ---------------------------------------------------------------
+-- Pause overlay
+-- ---------------------------------------------------------------
+local PAUSE_PANEL_W = 470
+local PAUSE_PANEL_H = 420
+
+local function getPauseMenuLayout()
+	local panelX = (window_width - PAUSE_PANEL_W) / 2
+	local panelY = (window_height - PAUSE_PANEL_H) / 2
+	local itemW = 300
+	local itemH = 54
+	local gap = 12
+	local startY = panelY + 150
+	return panelX, panelY, itemW, itemH, gap, startY
+end
+
+local function drawPauseOverlay()
+	love.graphics.setColor(0, 0, 0, 0.68)
+	love.graphics.rectangle("fill", 0, 0, window_width, window_height)
+	drawVignette(0.55)
+
+	local panelX, panelY, itemW, itemH, gap, startY = getPauseMenuLayout()
+	drawPanel(panelX, panelY, PAUSE_PANEL_W, PAUSE_PANEL_H, 18, { 0.04, 0.05, 0.1, 0.92 }, { 1, 1, 1, 0.16 })
+
+	drawTextCentered("PAUSED", font48, window_width / 2, panelY + 36, { 1, 1, 1, 1 })
+	drawGradientRounded(window_width / 2 - 60, panelY + 94, 120, 4, 2, UI_ACCENT, UI_XP)
+
+	local summary = "TIME " .. formatPlayTime(sessionTimer) .. "   ·   LEVEL " .. player.level .. "   ·   KILLS " .. totalKills
+	drawTextCentered(summary, font16, window_width / 2, panelY + 112, { 0.55, 0.6, 0.7, 1 })
+
+	for i, option in ipairs(pauseOptions) do
+		local itemX = window_width / 2 - itemW / 2
+		local itemY = startY + (i - 1) * (itemH + gap)
+		local acc = UI_ACCENT
+		if option == "Restart" then
+			acc = { 1.0, 0.65, 0.2 }
+		elseif option == "Quit" then
+			acc = { 1.0, 0.35, 0.4 }
+		end
+		drawMenuButton(itemX, itemY, itemW, itemH, option, font24, i == pauseSelectedOption, acc)
+	end
+
+	drawTextCentered("ARROWS / D-PAD TO NAVIGATE  ·  ENTER / A TO SELECT", font16, window_width / 2, panelY + PAUSE_PANEL_H - 34, { 0.5, 0.55, 0.65, 1 })
+end
+
+-- ---------------------------------------------------------------
+-- Game over overlay
+-- ---------------------------------------------------------------
+local GAMEOVER_PANEL_W = 520
+local GAMEOVER_PANEL_H = 460
+
+local function getGameOverMenuLayout()
+	local panelX = (window_width - GAMEOVER_PANEL_W) / 2
+	local panelY = (window_height - GAMEOVER_PANEL_H) / 2
+	local itemW = 300
+	local itemH = 54
+	local gap = 12
+	local startY = panelY + 300
+	return panelX, panelY, itemW, itemH, gap, startY
+end
+
+local function drawGameOverOverlay()
+	love.graphics.setColor(0, 0, 0, 0.8)
+	love.graphics.rectangle("fill", 0, 0, window_width, window_height)
+	drawVignette(0.6)
+
+	local panelX, panelY, itemW, itemH, gap, startY = getGameOverMenuLayout()
+	drawPanel(panelX, panelY, GAMEOVER_PANEL_W, GAMEOVER_PANEL_H, 18, { 0.05, 0.04, 0.08, 0.94 }, { 1, 0.35, 0.4, 0.35 })
+
+	drawTextCentered("GAME OVER", font48, window_width / 2, panelY + 36, { 1, 0.35, 0.4, 1 })
+	drawGradientRounded(window_width / 2 - 60, panelY + 94, 120, 4, 2, { 1.0, 0.3, 0.36 }, { 0.6, 0.1, 0.2 })
+
+	-- run stats
+	local stats = {
+		{ "TIME", formatPlayTime(sessionTimer) },
+		{ "LEVEL", tostring(player.level) },
+		{ "KILLS", tostring(totalKills) },
+		{ "XP", tostring(player.experience) },
+	}
+	local statW = 90
+	local statGap = 26
+	local totalStatW = #stats * statW + (#stats - 1) * statGap
+	local statX0 = window_width / 2 - totalStatW / 2
+	local statY = panelY + 118
+	for i, s in ipairs(stats) do
+		local sx = statX0 + (i - 1) * (statW + statGap)
+		drawTextCentered(s[1], font16, sx + statW / 2, statY, { 0.5, 0.55, 0.65, 1 })
+		drawTextCentered(s[2], font28, sx + statW / 2, statY + 26, { 1, 1, 1, 1 })
+	end
+
+	for i, option in ipairs(gameOverOptions) do
+		local itemX = window_width / 2 - itemW / 2
+		local itemY = startY + (i - 1) * (itemH + gap)
+		local acc = option == "Quit" and { 1.0, 0.35, 0.4 } or { 0.35, 0.92, 0.55 }
+		drawMenuButton(itemX, itemY, itemW, itemH, option, font24, i == gameOverSelectedOption, acc)
+	end
+
+	drawTextCentered("ARROWS / D-PAD TO NAVIGATE  ·  ENTER / A TO SELECT", font16, window_width / 2, panelY + GAMEOVER_PANEL_H - 34, { 0.5, 0.55, 0.65, 1 })
+end
+
+-- ---------------------------------------------------------------
+-- Title screen
+-- ---------------------------------------------------------------
+local function getTitleMenuLayout()
+	local itemW = 300
+	local itemH = 54
+	local gap = 14
+	local startY = window_height / 2 + 70
+	return itemW, itemH, gap, startY
+end
+
+local function drawTitleScreen()
+	-- world behind is frozen; dim it
+	love.graphics.setColor(0, 0, 0, 0.55)
+	love.graphics.rectangle("fill", 0, 0, window_width, window_height)
+
+	local titleText = "SWARM PROTOCOL"
+	local f = font64
+	love.graphics.setFont(f)
+	local tw = f:getWidth(titleText)
+	local ty = window_height * 0.24
+
+	-- soft glow behind the title
+	for i = 1, 4 do
+		local a = 0.04 + i * 0.02
+		love.graphics.setColor(UI_ACCENT[1], UI_ACCENT[2], UI_ACCENT[3], a)
+		love.graphics.print(titleText, window_width / 2 - tw / 2 + (i - 2) * 1.5, ty + (i - 2) * 1.5)
+	end
+	love.graphics.setColor(1, 1, 1, 1)
+	love.graphics.print(titleText, window_width / 2 - tw / 2, ty)
+	drawGradientRounded(window_width / 2 - 110, ty + 74, 220, 4, 2, UI_ACCENT, UI_XP)
+
+	drawTextCentered("TOP-DOWN AUTO-SHOOTER  ·  SURVIVE THE SWARM", font18, window_width / 2, ty + 96, { 0.6, 0.66, 0.76, 1 })
+
+	local itemW, itemH, gap, startY = getTitleMenuLayout()
+	for i, option in ipairs(titleOptions) do
+		local itemX = window_width / 2 - itemW / 2
+		local itemY = startY + (i - 1) * (itemH + gap)
+		local acc = option == "Quit" and { 1.0, 0.35, 0.4 } or UI_ACCENT
+		drawMenuButton(itemX, itemY, itemW, itemH, option, font24, i == titleSelectedOption, acc)
+	end
+
+	local pulse = 0.45 + 0.25 * math.sin(titleTime * 2.5)
+	drawTextCentered("ARROWS / W-S / D-PAD TO NAVIGATE  ·  ENTER / A TO START  ·  ESC TO QUIT", font16, window_width / 2, window_height * 0.78, { 0.7, 0.78, 0.9, pulse })
+	drawTextCentered("v1.0  ·  LÖVE 2D", font16, window_width / 2, window_height - 40, { 0.4, 0.44, 0.54, 1 })
+end
+
+local function drawWorldBackdrop()
 	love.graphics.setColor(0.2, 0.2, 0.2)
 	love.graphics.rectangle("fill", 0, 0, window_width, window_height)
 
@@ -1210,6 +1876,16 @@ function love.draw()
 		local screenY = y - camera.y
 		love.graphics.line(0, screenY, window_width, screenY)
 	end
+end
+
+function love.draw()
+	if titleScreen then
+		drawWorldBackdrop()
+		drawTitleScreen()
+		return
+	end
+
+	drawWorldBackdrop()
 
 	love.graphics.setColor(1, 1, 1)
 	love.graphics.rectangle(
@@ -1417,253 +2093,47 @@ function love.draw()
 		end
 	end
 
-	love.graphics.setFont(font24)
-	love.graphics.setColor(1, 1, 1)
-	love.graphics.print("HP: " .. player.hp, 10, 10)
-	love.graphics.print("Level: " .. player.level, 10, 30)
-	love.graphics.print("XP: " .. player.experience .. "/" .. xpNeeded, 10, 50)
-	love.graphics.print("Current FPS: " .. tostring(love.timer.getFPS()), 10, 70)
-	love.graphics.print("Kills: " .. totalKills .. "/" .. killsForSpecial, 10, 90)
-
-	love.graphics.setFont(font24)
-	love.graphics.setColor(1, 1, 1)
-	love.graphics.print("Time: " .. formatPlayTime(sessionTimer), 10, window_height - 35)
-
-	local statsX = window_width - 10
-	love.graphics.setColor(1, 1, 1)
-	local pistolEntry = getUpgradeByName("Pistol")
-	local boomerangEntry = getUpgradeByName("Boomerang")
-	local pistolText = "Pistol: "
-		.. pistolEntry.level
-		.. "/"
-		.. pistolEntry.maxLevel
-		.. " (dmg "
-		.. bulletDamage
-		.. ", "
-		.. fireRateLevel
-		.. "/s)"
-	local detectRangeText = "Detection: " .. detectionRange
-	local damageText = "Damage: " .. bulletDamage
-	local hpText = "HP: " .. player.hp .. "/" .. player.maxHp
-	love.graphics.print(pistolText, statsX - font24:getWidth(pistolText), 10)
-	love.graphics.print(detectRangeText, statsX - font24:getWidth(detectRangeText), 30)
-	love.graphics.print(damageText, statsX - font24:getWidth(damageText), 50)
-	love.graphics.print(hpText, statsX - font24:getWidth(hpText), 70)
-
-	if boomerangsUnlocked then
-		local boomerangCount = 1 + boomerangLevel
-		local boomerangText = "Boomerangs: "
-			.. boomerangCount
-			.. " ("
-			.. boomerangEntry.level
-			.. "/"
-			.. boomerangEntry.maxLevel
-			.. ", "
-			.. string.format("%.1f", boomerangCooldown)
-			.. "/5.0s)"
-		love.graphics.print(boomerangText, statsX - font24:getWidth(boomerangText), 90)
-	end
-
-	if laserGunUnlocked then
-		local laserEntry = getUpgradeByName("Laser Gun")
-		local laserText = "Laser: "
-			.. laserEntry.level
-			.. "/"
-			.. laserEntry.maxLevel
-			.. " (dmg "
-			.. (laserGunDamageBase + laserGunLevel)
-			.. ")"
-		love.graphics.print(laserText, statsX - font24:getWidth(laserText), 110)
-	end
-
-	if missilesUnlocked then
-		local missileEntry = getUpgradeByName("Missiles")
-		local missileText = "Missiles: "
-			.. missileEntry.level
-			.. "/"
-			.. missileEntry.maxLevel
-			.. " (dmg "
-			.. (10 * missileLevel)
-			.. ", "
-			.. string.format("%.1f", missileCooldown)
-			.. "/3.0s)"
-		love.graphics.print(missileText, statsX - font24:getWidth(missileText), 150)
-	end
-
-	if shieldWaveUnlocked then
-		local shieldWaveEntry = getUpgradeByName("Shield Wave")
-		local shieldWaveText = "Shield Wave: "
-			.. shieldWaveEntry.level
-			.. "/"
-			.. shieldWaveEntry.maxLevel
-			.. " ("
-			.. string.format("%.1f", shieldWaveCooldown)
-			.. "/"
-			.. string.format("%.1f", getShieldWaveCooldown())
-			.. "s)"
-		love.graphics.print(shieldWaveText, statsX - font24:getWidth(shieldWaveText), 170)
+	if not titleScreen then
+		drawHUD()
 	end
 
 	if gameOver then
-		love.graphics.setColor(0, 0, 0, 0.7)
-		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
-
-		love.graphics.setColor(1, 1, 1)
-		love.graphics.setFont(font48)
-		local gameOverText = "Game Over"
-		local textWidth = font48:getWidth(gameOverText)
-		love.graphics.print(gameOverText, (window_width / 2) - textWidth / 2, 250)
-
-		local menuStartY = 330
-		local menuItemHeight = 50
-		local menuBoxWidth = 260
-		local menuBoxX = (window_width - menuBoxWidth) / 2
-
-		for i, option in ipairs(gameOverOptions) do
-			local itemY = menuStartY + (i - 1) * menuItemHeight
-
-			if i == gameOverSelectedOption then
-				love.graphics.setColor(0.3, 0.3, 0.6)
-			else
-				love.graphics.setColor(0.15, 0.15, 0.15, 0.9)
-			end
-			love.graphics.rectangle("fill", menuBoxX, itemY, menuBoxWidth, menuItemHeight - 6, 6, 6)
-
-			if i == gameOverSelectedOption then
-				love.graphics.setColor(0.6, 0.6, 1)
-			else
-				love.graphics.setColor(0.5, 0.5, 0.5)
-			end
-			love.graphics.rectangle("line", menuBoxX, itemY, menuBoxWidth, menuItemHeight - 6, 6, 6)
-
-			love.graphics.setFont(font28)
-			love.graphics.setColor(1, 1, 1)
-			local optionWidth = font28:getWidth(option)
-			love.graphics.print(
-				option,
-				(window_width - optionWidth) / 2,
-				itemY + (menuItemHeight - 6 - font28:getHeight()) / 2
-			)
-		end
-
-		love.graphics.setFont(font20)
-		love.graphics.setColor(0.6, 0.6, 0.6)
-		local hintText = "Arrows/D-Pad to navigate, Enter/A to select"
-		local hintWidth = font20:getWidth(hintText)
-		love.graphics.print(
-			hintText,
-			(window_width / 2) - hintWidth / 2,
-			menuStartY + #gameOverOptions * menuItemHeight + 10
-		)
+		drawGameOverOverlay()
 	end
 
 	if levelUpActive then
-		love.graphics.setColor(0, 0, 0, 0.7)
-		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
-
-		love.graphics.setColor(1, 1, 1)
-		love.graphics.setFont(font48)
-		local titleText = "Level Up!"
-		local titleWidth = font48:getWidth(titleText)
-		love.graphics.print(titleText, (window_width / 2) - titleWidth / 2, 100)
-
-		love.graphics.setFont(font28)
-		local boxWidth = 280
-		local boxHeight = 150
-		local boxGap = 40
-		local totalWidth = (boxWidth * 3) + (boxGap * 2)
-		local startX = (window_width - totalWidth) / 2
-		local boxY = 220
-
-		for i, choice in ipairs(levelUpChoices) do
-			local boxX = startX + (i - 1) * (boxWidth + boxGap)
-
-			if i == selectedChoice then
-				love.graphics.setColor(0.3, 0.3, 0.5)
-			else
-				love.graphics.setColor(0.2, 0.2, 0.2)
-			end
-			love.graphics.rectangle("fill", boxX, boxY, boxWidth, boxHeight)
-
-			love.graphics.setColor(1, 1, 1)
-			love.graphics.rectangle("line", boxX, boxY, boxWidth, boxHeight)
-
-			local numberText = tostring(i)
-			local numWidth = font28:getWidth(numberText)
-			love.graphics.print(numberText, boxX + (boxWidth - numWidth) / 2, boxY + 10)
-
-			local nameText = choice.name
-			local nameWidth = font28:getWidth(nameText)
-			love.graphics.print(nameText, boxX + (boxWidth - nameWidth) / 2, boxY + 50)
-
-			love.graphics.setFont(font20)
-			local descWidth = font20:getWidth(choice.description)
-			love.graphics.setColor(0.8, 0.8, 0.8)
-			love.graphics.print(choice.description, boxX + (boxWidth - descWidth) / 2, boxY + 90)
-		end
-
-		love.graphics.setFont(font28)
-		love.graphics.setColor(1, 1, 1)
-		local hintText = "Press 1, 2, or 3 to choose"
-		local hintWidth = font28:getWidth(hintText)
-		love.graphics.print(hintText, (window_width / 2) - hintWidth / 2, boxY + boxHeight + 30)
+		drawLevelUpOverlay()
 	end
 
 	if paused then
-		love.graphics.setColor(0, 0, 0, 0.6)
-		love.graphics.rectangle("fill", 0, 0, window_width, window_height)
+		drawPauseOverlay()
+	end
 
-		love.graphics.setColor(1, 1, 1)
-		love.graphics.setFont(font48)
-		local pauseText = "PAUSED"
-		local textWidth = font48:getWidth(pauseText)
-		love.graphics.print(pauseText, (window_width / 2) - textWidth / 2, window_height / 2 - 120)
-
-		local menuStartY = window_height / 2 - 40
-		local menuItemHeight = 50
-		local menuBoxWidth = 260
-		local menuBoxX = (window_width - menuBoxWidth) / 2
-
-		for i, option in ipairs(pauseOptions) do
-			local itemY = menuStartY + (i - 1) * menuItemHeight
-
-			if i == pauseSelectedOption then
-				love.graphics.setColor(0.3, 0.3, 0.6)
-			else
-				love.graphics.setColor(0.15, 0.15, 0.15, 0.9)
-			end
-			love.graphics.rectangle("fill", menuBoxX, itemY, menuBoxWidth, menuItemHeight - 6, 6, 6)
-
-			if i == pauseSelectedOption then
-				love.graphics.setColor(0.6, 0.6, 1)
-			else
-				love.graphics.setColor(0.5, 0.5, 0.5)
-			end
-			love.graphics.rectangle("line", menuBoxX, itemY, menuBoxWidth, menuItemHeight - 6, 6, 6)
-
-			love.graphics.setFont(font28)
-			love.graphics.setColor(1, 1, 1)
-			local optionWidth = font28:getWidth(option)
-			love.graphics.print(
-				option,
-				(window_width - optionWidth) / 2,
-				itemY + (menuItemHeight - 6 - font28:getHeight()) / 2
-			)
-		end
-
-		love.graphics.setFont(font20)
-		love.graphics.setColor(0.6, 0.6, 0.6)
-		local hintText = "Arrows/D-Pad to navigate, Enter/A to select"
-		local hintWidth = font20:getWidth(hintText)
-		love.graphics.print(
-			hintText,
-			(window_width / 2) - hintWidth / 2,
-			menuStartY + #pauseOptions * menuItemHeight + 10
-		)
+	if titleScreen then
+		drawTitleScreen()
 	end
 end
 
 function love.keypressed(key)
+	if titleScreen then
+		if key == "up" or key == "w" then
+			titleSelectedOption = titleSelectedOption - 1
+			if titleSelectedOption < 1 then
+				titleSelectedOption = #titleOptions
+			end
+		elseif key == "down" or key == "s" then
+			titleSelectedOption = titleSelectedOption + 1
+			if titleSelectedOption > #titleOptions then
+				titleSelectedOption = 1
+			end
+		elseif key == "return" or key == "kpenter" then
+			executeTitleOption(titleSelectedOption)
+		elseif key == "escape" then
+			love.event.quit()
+		end
+		return
+	end
+
 	if (key == "escape" or key == "p") and not gameOver then
 		if paused then
 			paused = false
@@ -1715,57 +2185,80 @@ function love.keypressed(key)
 end
 
 function love.mousepressed(x, y, button)
-	if paused then
-		local menuStartY = window_height / 2 - 40
-		local menuItemHeight = 50
-		local menuBoxWidth = 260
-		local menuBoxX = (window_width - menuBoxWidth) / 2
+	if titleScreen then
+		local itemW, itemH, gap, startY = getTitleMenuLayout()
+		for i = 1, #titleOptions do
+			local itemX = window_width / 2 - itemW / 2
+			local itemY = startY + (i - 1) * (itemH + gap)
+			if x >= itemX and x <= itemX + itemW and y >= itemY and y <= itemY + itemH then
+				executeTitleOption(i)
+				return
+			end
+		end
+		return
+	end
 
+	if paused then
+		local _, _, itemW, itemH, gap, startY = getPauseMenuLayout()
 		for i = 1, #pauseOptions do
-			local itemY = menuStartY + (i - 1) * menuItemHeight
-			if x >= menuBoxX and x <= menuBoxX + menuBoxWidth and y >= itemY and y <= itemY + menuItemHeight - 6 then
+			local itemX = window_width / 2 - itemW / 2
+			local itemY = startY + (i - 1) * (itemH + gap)
+			if x >= itemX and x <= itemX + itemW and y >= itemY and y <= itemY + itemH then
 				executePauseOption(i)
-				break
+				return
 			end
 		end
 		return
 	end
 
 	if gameOver then
-		local menuStartY = 330
-		local menuItemHeight = 50
-		local menuBoxWidth = 260
-		local menuBoxX = (window_width - menuBoxWidth) / 2
-
+		local _, _, itemW, itemH, gap, startY = getGameOverMenuLayout()
 		for i = 1, #gameOverOptions do
-			local itemY = menuStartY + (i - 1) * menuItemHeight
-			if x >= menuBoxX and x <= menuBoxX + menuBoxWidth and y >= itemY and y <= itemY + menuItemHeight - 6 then
+			local itemX = window_width / 2 - itemW / 2
+			local itemY = startY + (i - 1) * (itemH + gap)
+			if x >= itemX and x <= itemX + itemW and y >= itemY and y <= itemY + itemH then
 				executeGameOverOption(i)
-				break
+				return
 			end
 		end
 		return
 	end
 
 	if levelUpActive then
-		local boxWidth = 280
-		local boxHeight = 150
-		local boxGap = 40
-		local totalWidth = (boxWidth * 3) + (boxGap * 2)
-		local startX = (window_width - totalWidth) / 2
-		local boxY = 220
-
-		for i = 1, 3 do
-			local boxX = startX + (i - 1) * (boxWidth + boxGap)
-			if x >= boxX and x <= boxX + boxWidth and y >= boxY and y <= boxY + boxHeight then
+		local startX, startY = getLevelUpLayout()
+		for i = 1, #levelUpChoices do
+			local cardX = startX + (i - 1) * (LEVELUP_CARD_W + LEVELUP_CARD_GAP)
+			if
+				x >= cardX
+				and x <= cardX + LEVELUP_CARD_W
+				and y >= startY
+				and y <= startY + LEVELUP_CARD_H
+			then
 				selectUpgrade(i)
-				break
+				return
 			end
 		end
 	end
 end
 
 function love.gamepadpressed(j, button)
+	if titleScreen then
+		if button == "dpup" then
+			titleSelectedOption = titleSelectedOption - 1
+			if titleSelectedOption < 1 then
+				titleSelectedOption = #titleOptions
+			end
+		elseif button == "dpdown" then
+			titleSelectedOption = titleSelectedOption + 1
+			if titleSelectedOption > #titleOptions then
+				titleSelectedOption = 1
+			end
+		elseif button == "a" then
+			executeTitleOption(titleSelectedOption)
+		end
+		return
+	end
+
 	if button == "start" and not gameOver then
 		if paused then
 			paused = false
@@ -1811,6 +2304,16 @@ function love.gamepadpressed(j, button)
 		elseif button == "dpright" or button == "rightshoulder" then
 			selectedChoice = math.min(3, selectedChoice + 1)
 		end
+	end
+end
+
+function executeTitleOption(index)
+	local option = titleOptions[index]
+	if option == "Start Game" then
+		resetGame()
+		titleScreen = false
+	elseif option == "Quit" then
+		love.event.quit()
 	end
 end
 
